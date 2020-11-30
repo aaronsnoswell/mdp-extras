@@ -81,7 +81,7 @@ class FeatureFunction(abc.ABC):
         Returns:
         
         """
-        
+
         # Catch case when only a single rollout is passed
         if isinstance(rollouts[0], tuple):
             rollouts = [rollouts]
@@ -93,7 +93,7 @@ class FeatureFunction(abc.ABC):
             assert len(weights) == len(
                 rollouts
             ), f"Path weights are not correct size, should be {len(rollouts)}, are {len(weights)}"
-        
+
         phi_bar = np.zeros(len(self))
         for rollout, weight in zip(rollouts, weights):
 
@@ -129,13 +129,11 @@ class Indicator(FeatureFunction):
         super().__init__(type)
 
         if self.type == FeatureFunction.Type.OBSERVATION:
-            self._vec = np.zeros(len(xtr.states)).flatten()
+            self._vec = np.zeros(len(xtr.states))
         elif self.type == FeatureFunction.Type.OBSERVATION_ACTION:
-            self._vec = np.zeros((len(xtr.states), len(xtr.actions))).flatten()
+            self._vec = np.zeros((len(xtr.states), len(xtr.actions)))
         elif self.type == FeatureFunction.Type.OBSERVATION_ACTION_OBSERVATION:
-            self._vec = np.zeros(
-                (len(xtr.states), len(xtr.actions), len(xtr.sates))
-            ).flatten()
+            self._vec = np.zeros((len(xtr.states), len(xtr.actions), len(xtr.sates)))
         else:
             raise ValueError
 
@@ -145,7 +143,7 @@ class Indicator(FeatureFunction):
         Returns:
             (int): Length of this feature vector
         """
-        return len(self._vec)
+        return len(self._vec.flatten())
 
     def __call__(self, o1, a=None, o2=None):
         """Get feature vector given state(s) and/or action
