@@ -9,8 +9,15 @@ from mdp_extras.soln import (
     v_vi,
     v2q,
     pi_eval,
+    q_grad_nd,
+    q_grad_sim,
+    q_grad_fpi,
     EpsilonGreedyPolicy,
     OptimalPolicy,
     BoltzmannExplorationPolicy,
 )
-from mdp_extras.utils import trajectory_reward, compute_parents_children
+from mdp_extras.utils import (
+    trajectory_reward,
+    compute_parents_children,
+    DiscreteExplicitLinearEnv,
+)
