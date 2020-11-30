@@ -1,6 +1,7 @@
 """Find solutions to MDPs via value iteration methods"""
 
 import abc
+import copy
 import pickle
 
 import numpy as np
@@ -9,6 +10,8 @@ import itertools as it
 from numba import jit
 
 from mdp_extras.features import FeatureFunction
+from mdp_extras.rewards import Linear
+from mdp_extras.utils import DiscreteExplicitLinearEnv
 
 
 def q_vi(xtr, phi, r, eps=1e-6, verbose=False, max_iter=None):
@@ -307,6 +310,155 @@ def pi_eval(xtr, phi, r, policy, eps=1e-6, num_runs=1):
 
     # Average over runs
     return np.mean(policy_state_values, axis=0)
+
+
+def q_grad_fpi(theta, xtr, phi, tol=1e-3):
+    """Estimate the Q-gradient with a Fixed Point Iteration
+    
+    This method uses a Fixed-Point estimate by Neu and Szepesvari 2007, and is
+    considered by me to be the 'gold standard' for Q-gradient estimation.
+    
+    This method requires |S|x|S|x|A|x|A| updates per iteration, and empirically appears
+    to have exponential convergence in the number of iterations. That is,
+    δ α O(exp(-1.0 x iteration)).
+    
+    Args:
+        theta (numpy array): Current reward parameters
+        xtr (mdp_extras.DiscreteExplicitExtras): MDP definition
+        phi (mdp_extras.FeatureFunction): A state-action feature function
+    
+    Returns:
+        (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
+    """
+
+    # Get optimal *DETERMINISTIC* policy
+    # (the fixed point iteration is only valid for deterministic policies)
+    reward = Linear(theta)
+    q_star = q_vi(xtr, phi, reward)
+    pi_star = OptimalPolicy(q_star, stochastic=False)
+
+    # Initialize starting point
+    dq_dtheta = np.zeros((len(xtr.states), len(xtr.actions), len(phi)))
+    for s in xtr.states:
+        for a in xtr.actions:
+            dq_dtheta[s, a, :] = phi(s, a)
+
+    # Apply fixed point iteration
+    for _ in it.count():
+        # Use full-width backups
+        dq_dtheta_old = dq_dtheta.copy()
+        dq_dtheta[:, :, :] = 0.0
+        for s1 in xtr.states:
+            for a1 in xtr.actions:
+                dq_dtheta[s1, a1, :] = phi(s1, a1)
+                for s2 in xtr.states:
+                    for a2 in xtr.actions:
+                        dq_dtheta[s1, a1, :] += (
+                            xtr.gamma
+                            * xtr.t_mat[s1, a1, s2]
+                            * pi_star.prob_for_state_action(s2, a2)
+                            * dq_dtheta_old[s2, a2, :]
+                        )
+
+        delta = np.max(np.abs(dq_dtheta_old.flatten() - dq_dtheta.flatten()))
+
+        if delta <= tol:
+            break
+
+    return dq_dtheta
+
+
+def q_grad_sim(
+    theta, xtr, phi, max_rollout_length, rollouts_per_sa=100,
+):
+    """Estimate the Q-gradient with simulation
+    
+    This method samples many rollouts from the optimal stationary stochastic policy for
+    every possible (s, a) pair. This can give arbitrarily bad gradient estimates
+    when used with non-episodic MDPs due to the early truncation of rollouts.
+    This method also gives arbitrarily bad gradient estimates for terminal states in
+    episodic MDPs, unless the max rollout length is set sufficiently high.
+    
+    This method requires sampling |S|x|A|x(rollouts_per_sa) rollouts from the MDP,
+    and is by far the slowest of the Q-gradient estimators.
+    
+    Args:
+        theta (numpy array): Current reward parameters
+        xtr (mdp_extras.DiscreteExplicitExtras): MDP definition
+        phi (mdp_extras.FeatureFunction): A state-action feature function
+        max_rollout_length (int): Maximum rollout length - this value is rather
+            arbitrary, but must be set to a large value to give accurate estimates.
+        
+        rollouts_per_sa (int): Number of rollouts to sample for each (s, a) pair. If
+            the environment has deterministic dynamics, it's OK to set this to a small
+            number (i.e. 1).
+    
+    Returns:
+        (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
+    """
+
+    # Get optimal policy
+    reward = Linear(theta)
+    q_star = q_vi(xtr, phi, reward)
+    pi_star = OptimalPolicy(q_star, stochastic=True)
+
+    # Duplicate the MDP, but clear all terminal states
+    xtr = copy.deepcopy(xtr)
+    xtr._terminal_state_mask[:] = False
+    env = DiscreteExplicitLinearEnv(xtr, phi, reward)
+
+    # Calculate expected feature vector under pi for all starting state-action pairs
+    dq_dtheta = np.zeros((len(xtr.states), len(xtr.actions), len(phi)))
+    for s in xtr.states:
+        for a in xtr.actions:
+            # Start with desired state, action
+            rollouts = pi_star.get_rollouts(
+                env,
+                rollouts_per_sa,
+                max_path_length=max_rollout_length,
+                start_state=s,
+                start_action=a,
+            )
+            phi_bar = phi.expectation(rollouts, gamma=xtr.gamma)
+            dq_dtheta[s, a, :] = phi_bar
+
+    return dq_dtheta
+
+
+def q_grad_nd(theta, xtr, phi, dtheta=0.01):
+    """Estimate the Q-gradient with 2-point numerical differencing
+    
+    This method requires solving for 2x|φ| Q* functions
+    
+    Args:
+        theta (numpy array): Current reward parameters
+        xtr (mdp_extras.DiscreteExplicitExtras): MDP definition
+        phi (mdp_extras.FeatureFunction): A state-action feature function
+        
+        dtheta (float): Amount to increment reward parameters by
+    
+    Returns:
+        (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
+    """
+
+    # Calculate expected feature vector under pi for all starting state-action pairs
+    dq_dtheta = np.zeros((len(xtr.states), len(xtr.actions), len(phi)))
+
+    # Sweep linear reward parameters
+    for theta_i in range(len(theta)):
+        # Solve for Q-function with upper and lower reward parameter increments
+        theta_lower = theta.copy()
+        theta_lower[theta_i] -= dtheta
+        q_star_lower = q_vi(xtr, phi, Linear(theta_lower))
+
+        theta_upper = theta.copy()
+        theta_upper[theta_i] += dtheta
+        q_star_upper = q_vi(xtr, phi, Linear(theta_upper))
+
+        # Take numerical difference to estimate gradient
+        dq_dtheta[:, :, theta_i] = (q_star_upper - q_star_lower) / (2.0 * dtheta)
+
+    return dq_dtheta
 
 
 class Policy(abc.ABC):
