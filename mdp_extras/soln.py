@@ -318,6 +318,9 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
     This method uses a Fixed-Point estimate by Neu and Szepesvari 2007, and is
     considered by me to be the 'gold standard' for Q-gradient estimation.
     
+    See "Apprenticeship learning using inverse reinforcement learning and gradient
+    methods." by Neu and Szepesvari in UAI, 2007.
+    
     This method requires |S|x|S|x|A|x|A| updates per iteration, and empirically appears
     to have exponential convergence in the number of iterations. That is,
     δ α O(exp(-1.0 x iteration)).
