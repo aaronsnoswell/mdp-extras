@@ -1,6 +1,7 @@
 """Various utilites for generating 'extra' objects"""
 
 import copy
+import warnings
 
 import numpy as np
 from gym.spaces import Discrete
@@ -122,6 +123,8 @@ def padding_trick(xtr, phi, r, rollouts=None, max_length=None):
         (list): List of rollouts, padded to max_length. Only returned if rollouts is not
             None
     """
+
+    from mdp_extras import DiscreteExplicitExtras, Indicator, Disjoint, Linear
 
     t_mat = np.pad(xtr.t_mat, (0, 1), mode="constant")
     s_aux = t_mat.shape[0] - 1
