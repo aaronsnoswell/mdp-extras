@@ -1,4 +1,4 @@
-"""Various utilites for generating 'extra' objects"""
+"""Various utilities for generating 'extra' objects"""
 
 import copy
 import warnings
