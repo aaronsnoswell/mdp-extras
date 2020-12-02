@@ -87,8 +87,8 @@ class FeatureFunction(abc.ABC):
             rollouts = [rollouts]
 
         if weights is None:
-            # Default to uniform path weighting (normalization happens at end of function)
-            weights = np.ones(len(rollouts))
+            # Default to uniform path weighting
+            weights = np.ones(len(rollouts)) / len(rollouts)
         else:
             assert len(weights) == len(
                 rollouts
