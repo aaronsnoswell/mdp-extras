@@ -146,7 +146,7 @@ def padding_trick(xtr, phi, reward, rollouts=None, max_length=None):
     t_mat[:, -1, -1] = 1
 
     xtr2 = DiscreteExplicitExtras(
-        states, actions, p0s, t_mat, terminal_state_mask, xtr.gamma
+        states, actions, p0s, t_mat, terminal_state_mask, xtr.gamma, True
     )
 
     # Auxiliary state, action don't modify rewards

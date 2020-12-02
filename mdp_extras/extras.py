@@ -11,7 +11,9 @@ from mdp_extras.utils import compute_parents_children
 class DiscreteExplicitExtras:
     """Extras for a discrete state, discrete action, explicit dynamics MDP"""
 
-    def __init__(self, states, actions, p0s, t_mat, terminal_state_mask, gamma=1.0):
+    def __init__(
+        self, states, actions, p0s, t_mat, terminal_state_mask, gamma=1.0, padded=False
+    ):
         """C-tor
         
         Args:
@@ -21,7 +23,10 @@ class DiscreteExplicitExtras:
             t_mat (numpy array): |S|x|A|x|S| numpy array of transition probabilities
             terminal_state_mask (numpy array): |S| boolean vector indicating if states
                 are terminal or not
+                
             gamma (float): Discount factor
+            padded (bool): True if this MDP has been padded to include an extra state
+                and action.
         """
 
         self._states = states
@@ -34,6 +39,10 @@ class DiscreteExplicitExtras:
         self._parents, self._children = compute_parents_children(
             self._t_mat, self._terminal_state_mask
         )
+
+        # Has this MDP been padded with an extra state and action?
+        # See utils.padding_trick()
+        self._padded = padded
 
     @staticmethod
     def fromdiscrete(env, gamma=1.0):
@@ -117,6 +126,10 @@ class DiscreteExplicitExtras:
     def gamma(self):
         """Discount factor"""
         return self._gamma
+
+    @property
+    def padded(self):
+        return self._padded
 
     def path_log_probability(self, p):
         """Get log probability of a state-action path under MDP dynamics
