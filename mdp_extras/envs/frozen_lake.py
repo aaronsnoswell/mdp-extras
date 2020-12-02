@@ -1,4 +1,4 @@
-"""Utilities for wokring with the OpenAI Gym FrozenLake MDP"""
+"""Utilities for working with the OpenAI Gym FrozenLake MDP"""
 
 import gym
 import numpy as np

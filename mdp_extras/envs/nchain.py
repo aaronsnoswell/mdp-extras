@@ -1,4 +1,4 @@
-"""Utilities for wokring with the OpenAI Gym NChain MDP"""
+"""Utilities for working with the OpenAI Gym NChain MDP"""
 
 import numpy as np
 
