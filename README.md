@@ -8,10 +8,14 @@ Reinforcement Learning (RL) algorithms.
 Many existing APIs for specifying Markov Decision Processes (MDPs) are oriented toward
 RL applications, and lack many critical features that would allow them to be used for
 IRL.
-For example, the popular OpenAI `Gym` 'interface' doesn't impose any structure on the
-transition dynamics, reward function, observation features etc.
-While this makes the interface highly flexible, it also makes it largely useless
-for algorithm development.
+
+For example, are the MDP transition dynamics explicit (a full transition matrix is
+available to the algorithm), implicit (the algorithm can request a transition sample
+from any state-action tuple), or available by simulation only (the algorithm can only
+observe sequential transitions)?
+
+The same concerns also apply to state, action and observation spaces, feature functions,
+reward functions, discount factors, policy classes, etc.
 
 This utility library aims to provide a flexible way to specify MDP components such that
 they can be used in IRL applications.
