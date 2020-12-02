@@ -98,7 +98,7 @@ class DiscreteExplicitLinearEnv:
         return self.state, reward, done, info
 
 
-def padding_trick(xtr, phi, r, rollouts=None, max_length=None):
+def padding_trick(xtr, phi, reward, rollouts=None, max_length=None):
     """Apply padding trick, adding an auxiliary state and action to an MDP
     
     We gain a O(|S|) space and time efficiency improvement with our MaxEnt IRL algorithm
@@ -109,7 +109,7 @@ def padding_trick(xtr, phi, r, rollouts=None, max_length=None):
     Args:
         xtr (DiscreteExplicitExtras): Extras object
         phi (Indicator): Indicator/Disjoint feature function
-        r (Linear): Linear reward function
+        reward (Linear): Linear reward function
         
         rollouts (list): List of [(s, a), (s, a), ..., (s, None)] rollouts to pad
         max_length (int): Optional maximum length to pad to, otherwise paths are padded
@@ -152,7 +152,7 @@ def padding_trick(xtr, phi, r, rollouts=None, max_length=None):
     # Auxiliary state, action don't modify rewards
     if isinstance(phi, Indicator):
         # Pad an indicator feature function and linear reward function
-        rs, rsa, rsas = r.structured(xtr, phi)
+        rs, rsa, rsas = reward.structured(xtr, phi)
         rs = np.pad(rs, (0, 1), mode="constant")
         rs[-1] = 0
 
@@ -178,7 +178,7 @@ def padding_trick(xtr, phi, r, rollouts=None, max_length=None):
         # Pad a disjoint feature function and linear reward function
 
         phi2 = phi
-        r2 = r
+        r2 = reward
     else:
         raise ValueError
 
