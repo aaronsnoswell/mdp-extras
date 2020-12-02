@@ -207,3 +207,45 @@ def padding_trick(xtr, phi, reward, rollouts=None, max_length=None):
             rollouts2.append(rollout2)
 
         return xtr2, phi2, r2, rollouts2
+
+
+def padding_trick_mm(xtr, phi, rewards, rollouts, max_length=None):
+    """Apply padding trick to a Multi Modal MDP
+    
+    Args:
+        xtr (DiscreteExplicitExtras): Extras object
+        phi (Indicator): Indicator/Disjoint feature function
+        rewards (list/dict): List or dict of Linear reward functions
+        
+        rollouts (list): List of [(s, a), (s, a), ..., (s, None)] rollouts to pad
+        max_length (int): Optional maximum length to pad to, otherwise paths are padded
+            to match the length of the longest path
+        
+    Returns:
+        (DiscreteExplicitExtras): Extras object, padded with auxiliary state and action
+        (Indicator): Indicator feature function, padded with auxiliary state and action
+        (list/dict): List or dict of Linear reward functions, padded with auxiliary
+            state and action
+        
+        (list): List of rollouts, padded to max_length. Only returned if rollouts is not
+            None
+    
+    """
+    if isinstance(rewards, list):
+        rewards_padded = []
+        for reward in rewards:
+            xtr_padded, phi_padded, reward_padded, rollouts_padded = padding_trick(
+                xtr, phi, reward, rollouts, max_length
+            )
+            rewards_padded.append(reward)
+        return xtr_padded, phi_padded, rewards_padded, rollouts_padded
+    elif isinstance(rewards, dict):
+        rewards_padded = {}
+        for reward_name, reward in rewards.items():
+            xtr_padded, phi_padded, reward_padded, rollouts_padded = padding_trick(
+                xtr, phi, reward, rollouts, max_length
+            )
+            rewards_padded[reward_name] = reward_padded
+        return xtr_padded, phi_padded, rewards_padded, rollouts_padded
+    else:
+        raise ValueError

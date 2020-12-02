@@ -21,4 +21,5 @@ from mdp_extras.utils import (
     compute_parents_children,
     DiscreteExplicitLinearEnv,
     padding_trick,
+    padding_trick_mm,
 )
