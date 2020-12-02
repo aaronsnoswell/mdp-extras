@@ -49,7 +49,7 @@ Provides a general feature function interface.
    space.
    The output space can be smaller than the input space.
 
-### [rewards.py](mdp_extras/reward.py)
+### [rewards.py](mdp_extras/rewards.py)
 
 Structured reward function representations.
 
@@ -66,7 +66,7 @@ the Q-function gradient.
 
 Various miscellaneous utilities.
 
-### [/envs](envs)
+### [/envs](mdp_extras/envs)
 
 Utilities for converting OpenAI Gym `Environment` objects to the equivalent
 `mdp-extras` representations.
