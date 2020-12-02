@@ -8,10 +8,10 @@ Reinforcement Learning (RL) algorithms.
 Many existing APIs for specifying Markov Decision Processes (MDPs) are oriented toward
 RL applications, and lack many critical features that would allow them to be used for
 IRL.
-For example, the popular OpenAI `Gym` 'interface' does impose any structure on the
+For example, the popular OpenAI `Gym` 'interface' doesn't impose any structure on the
 transition dynamics, reward function, observation features etc.
 While this makes the interface highly flexible, it also makes it largely useless
-when developing IRL algorithms (besides, it lacks any sort of documentation).
+for algorithm development.
 
 This utility library aims to provide a flexible way to specify MDP components such that
 they can be used in IRL applications.
