@@ -3,6 +3,7 @@
 import abc
 import copy
 import pickle
+import warnings
 
 import numpy as np
 import itertools as it
@@ -14,13 +15,13 @@ from mdp_extras.rewards import Linear
 from mdp_extras.utils import DiscreteExplicitLinearEnv
 
 
-def q_vi(xtr, phi, r, eps=1e-6, verbose=False, max_iter=None):
+def q_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
     """Value iteration to find the optimal state-action value function
     
     Args:
         xtr (DiscreteExplicitExtras):
         phi (FeatureFunction): Feature function
-        r (RewardFunction): Reward function
+        reward (RewardFunction): Reward function
         
         eps (float): Value convergence tolerance
         verbose (bool): Extra logging
@@ -88,8 +89,9 @@ def q_vi(xtr, phi, r, eps=1e-6, verbose=False, max_iter=None):
 
         return q_value_fn
 
+    xtr = xtr.unpadded
     return _nb_q_value_iteration(
-        xtr.t_mat, xtr.gamma, *r.structured(xtr, phi), eps, verbose, max_iter
+        xtr.t_mat, xtr.gamma, *reward.structured(xtr, phi), eps, verbose, max_iter
     )
 
 
@@ -105,13 +107,13 @@ def q2v(q_star):
     return np.max(q_star, axis=1)
 
 
-def v_vi(xtr, phi, r, eps=1e-6, verbose=False, max_iter=None):
+def v_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
     """Value iteration to find the optimal state value function
     
     Args:
         xtr (DiscreteExplicitExtras): Extras object
         phi (FeatureFunction): Feature function
-        r (RewardFunction): Reward function
+        reward (RewardFunction): Reward function
         
         eps (float): Value convergence tolerance
         verbose (bool): Extra logging
@@ -122,7 +124,7 @@ def v_vi(xtr, phi, r, eps=1e-6, verbose=False, max_iter=None):
         (numpy array): |S|x|A| matrix of state-action values
     """
 
-    @jit(nopython=True)
+    #@jit(nopython=True)
     def _nb_value_iteration(
         t_mat, gamma, rs, rsa, rsas, eps=1e-6, verbose=False, max_iter=None
     ):
@@ -175,20 +177,21 @@ def v_vi(xtr, phi, r, eps=1e-6, verbose=False, max_iter=None):
             _iter += 1
 
         return value_fn
-
+    
+    xtr = xtr.unpadded
     return _nb_value_iteration(
-        xtr.t_mat, xtr.gamma, *r.structured(xtr, phi), eps, verbose, max_iter
+        xtr.t_mat, xtr.gamma, *reward.structured(xtr, phi), eps, verbose, max_iter
     )
 
 
-def v2q(v_star, xtr, phi, r):
+def v2q(v_star, xtr, phi, reward):
     """Convert optimal state value function to optimal state-action value function
     
     Args:
         v_star (numpy array): |S| Optimal state value function vector
         xtr (DiscreteExplicitExtras):
         phi (FeatureFunction): Feature function
-        r (RewardFunction): Reward function
+        reward (RewardFunction): Reward function
     
     Returns:
         (numpy array): |S|x|A| Optimal state-action value function array
@@ -231,16 +234,17 @@ def v2q(v_star, xtr, phi, r):
 
         return q_star
 
-    return _nb_q_from_v(v_star, xtr.t_mat, xtr.gamma, *r.structured(xtr, phi))
+    xtr = xtr.unpadded
+    return _nb_q_from_v(v_star, xtr.t_mat, xtr.gamma, *reward.structured(xtr, phi))
 
 
-def pi_eval(xtr, phi, r, policy, eps=1e-6, num_runs=1):
+def pi_eval(xtr, phi, reward, policy, eps=1e-6, num_runs=1):
     """Determine the value function of a given policy
     
     Args:
         xtr (DiscreteExplicitExtras): Extras object
         phi (FeatureFunction): Feature function
-        r (RewardFunction): Reward function
+        reward (RewardFunction): Reward function
         policy (object): Policy object providing a .predict(s) method to match the
             stable-baselines policy API
         
@@ -299,12 +303,17 @@ def pi_eval(xtr, phi, r, policy, eps=1e-6, num_runs=1):
 
         return v_pi
 
+    xtr = xtr.unpadded
     policy_state_values = []
     for _ in range(num_runs):
         action_vector = np.array([policy.predict(s)[0] for s in xtr.states])
         policy_state_values.append(
             _nb_policy_evaluation(
-                xtr.t_mat, xtr.gamma, *r.structured(xtr, phi), action_vector, eps=eps,
+                xtr.t_mat,
+                xtr.gamma,
+                *reward.structured(xtr, phi),
+                action_vector,
+                eps=eps,
             )
         )
 
@@ -333,6 +342,8 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
     Returns:
         (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
     """
+    
+    xtr = xtr.unpadded
 
     # Get optimal *DETERMINISTIC* policy
     # (the fixed point iteration is only valid for deterministic policies)
@@ -399,6 +410,8 @@ def q_grad_sim(
     Returns:
         (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
     """
+    
+    xtr = xtr.unpadded
 
     # Get optimal policy
     reward = Linear(theta)
@@ -443,6 +456,8 @@ def q_grad_nd(theta, xtr, phi, dtheta=0.01):
     Returns:
         (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
     """
+    
+    xtr = xtr.unpadded
 
     # Calculate expected feature vector under pi for all starting state-action pairs
     dq_dtheta = np.zeros((len(xtr.states), len(xtr.actions), len(phi)))
@@ -521,7 +536,7 @@ class Policy(abc.ABC):
 
         # N.b. - final tuple is (s, None), which we skip
         for s, a in p[:-1]:
-            log_action_prob = self.log_prob_for_state(s)[a]
+            log_action_prob = self.log_prob_for_state_action(s, a)
             if np.isneginf(log_action_prob):
                 return -np.inf
 
@@ -561,7 +576,12 @@ class Policy(abc.ABC):
         Returns:
             (float): Probability of choosing a from s
         """
-        return self.prob_for_state(s)[a]
+        action_probs = self.prob_for_state(s)
+        if a > len(action_probs) - 1:
+            warnings.warn(f"Requested π({a}|{s}), but |A| = {len(action_probs)} - returning 1.0. If {a} is a dummy action you can safely ignore this warning.")
+            return 1.0
+        else:
+            return action_probs[a]
 
     def log_prob_for_state_action(self, s, a):
         """Get the log probability for the given state, action
@@ -573,7 +593,12 @@ class Policy(abc.ABC):
         Returns:
             (float): Log probability of choosing a from s
         """
-        return self.log_prob_for_state(s)[a]
+        log_action_probs = self.log_prob_for_state(s)
+        if a > len(log_action_probs) - 1:
+            warnings.warn(f"Requested log π({a}|{s}), but |A| = {len(log_action_probs)} - returning 0.0. If {a} is a dummy action you can safely ignore this warning.")
+            return 0.0
+        else:
+            return log_action_probs[a]
 
     def get_rollouts(
         self, env, num, max_path_length=None, start_state=None, start_action=None
@@ -658,9 +683,14 @@ class EpsilonGreedyPolicy(Policy):
             (numpy array): Probability distribution over actions, respecting the
                 self.stochastic and self.epsilon parameters
         """
+        
+        num_states, num_actions = self.q.shape
+        if s > num_states - 1:
+            warnings.warn(f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning.")
+            return np.ones(num_actions)
 
         # Get a list of the optimal actions
-        action_values = self.q[s]
+        action_values = self.q[s, :]
         best_action_value = np.max(action_values)
         best_action_mask = action_values == best_action_value
         best_actions = np.where(best_action_mask)[0]
@@ -709,6 +739,12 @@ class OptimalPolicy(EpsilonGreedyPolicy):
         self.q_precision = q_precision
 
     def prob_for_state(self, s):
+        
+        num_states, num_actions = self.q.shape
+        if s > num_states - 1:
+            warnings.warn(f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning.")
+            return np.ones(num_actions)
+        
         if self.stochastic:
 
             if self.q_precision is None:
@@ -778,13 +814,15 @@ class BoltzmannExplorationPolicy(Policy):
             (numpy array): Probability distribution over actions, respecting the
                 self.stochastic and self.epsilon parameters
         """
-        # # Prepare action probability vector
-        # p = np.exp(self.scale * self.q[s])
-        # p /= np.sum(p)
-        # return p
         return np.exp(self.log_prob_for_state(s))
 
     def log_prob_for_state(self, s):
+        
+        num_states, num_actions = self.q.shape
+        if s > num_states - 1:
+            warnings.warn(f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning.")
+            return np.ones(num_actions)
+        
         log_prob = self.scale * self.q[s]
         total_log_prob = np.log(np.sum(np.exp(log_prob)))
         log_prob -= total_log_prob
