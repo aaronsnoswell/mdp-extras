@@ -130,6 +130,15 @@ class DiscreteExplicitExtras:
     @property
     def padded(self):
         return self._padded
+    
+    @property
+    def unpadded(self):
+        if not self.padded:
+            return self
+        else:
+            return DiscreteExplicitExtras(
+                self.states[:-1], self.actions[:-1], self.p0s[:-1], self.t_mat[:-1, :-1, :-1], self.terminal_state_mask[:-1], self.gamma, False
+            )
 
     def path_log_probability(self, p):
         """Get log probability of a state-action path under MDP dynamics
