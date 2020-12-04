@@ -183,7 +183,7 @@ def padding_trick(xtr, phi, reward, rollouts=None, max_length=None):
         raise ValueError
 
     if rollouts is None:
-        return xtr2, phi2, r2
+        return xtr2, phi2, r2, None
     else:
         # Measure the length of the rollouts
         r_len = [len(r) for r in rollouts]
@@ -209,7 +209,7 @@ def padding_trick(xtr, phi, reward, rollouts=None, max_length=None):
         return xtr2, phi2, r2, rollouts2
 
 
-def padding_trick_mm(xtr, phi, rewards, rollouts, max_length=None):
+def padding_trick_mm(xtr, phi, rewards, rollouts=None, max_length=None):
     """Apply padding trick to a Multi Modal MDP
     
     Args:
