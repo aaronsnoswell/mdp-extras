@@ -177,7 +177,7 @@ def v_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
             _iter += 1
 
         return value_fn
-    
+
     xtr = xtr.unpadded
     return _nb_value_iteration(
         xtr.t_mat, xtr.gamma, *reward.structured(xtr, phi), eps, verbose, max_iter
@@ -350,7 +350,7 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
     reward = Linear(theta)
     q_star = q_vi(xtr, phi, reward)
     pi_star = OptimalPolicy(q_star, stochastic=False)
-    
+
     @jit(nopython=True)
     def _nb_fpi(states, actions, t_mat, gamma, phi, pi_star, tol):
         """Plain-object core loop for numba optimization
@@ -371,7 +371,7 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
         """
         # Initialize
         dq_dtheta = phi.copy()
-        
+
         # Apply fixed point iteration
         it = 0
         while True:
@@ -389,15 +389,15 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
                                 * pi_star[s2, a2]
                                 * dq_dtheta_old[s2, a2, :]
                             )
-    
+
             delta = np.max(np.abs(dq_dtheta_old.flatten() - dq_dtheta.flatten()))
             it += 1
-    
+
             if delta <= tol:
                 break
-    
+
         return dq_dtheta
-    
+
     # Build plain object arrays
     _pi_star = np.zeros((len(xtr.states), len(xtr.actions)))
     _phi = np.zeros((len(xtr.states), len(xtr.actions), len(phi)))
@@ -405,8 +405,10 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
         for a in xtr.actions:
             _pi_star[s, a] = pi_star.prob_for_state_action(s, a)
             _phi[s, a, :] = phi(s, a)
-    
-    dq_dtheta = _nb_fpi(xtr.states, xtr.actions, xtr.t_mat, xtr.gamma, _phi, _pi_star, tol)
+
+    dq_dtheta = _nb_fpi(
+        xtr.states, xtr.actions, xtr.t_mat, xtr.gamma, _phi, _pi_star, tol
+    )
 
     return dq_dtheta
 
@@ -439,7 +441,7 @@ def q_grad_sim(
     Returns:
         (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
     """
-    
+
     xtr = xtr.unpadded
 
     # Get optimal policy
@@ -485,7 +487,7 @@ def q_grad_nd(theta, xtr, phi, dtheta=0.01):
     Returns:
         (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
     """
-    
+
     xtr = xtr.unpadded
 
     # Calculate expected feature vector under pi for all starting state-action pairs
@@ -607,7 +609,9 @@ class Policy(abc.ABC):
         """
         action_probs = self.prob_for_state(s)
         if a > len(action_probs) - 1:
-            warnings.warn(f"Requested π({a}|{s}), but |A| = {len(action_probs)} - returning 1.0. If {a} is a dummy action you can safely ignore this warning.")
+            warnings.warn(
+                f"Requested π({a}|{s}), but |A| = {len(action_probs)} - returning 1.0. If {a} is a dummy action you can safely ignore this warning."
+            )
             return 1.0
         else:
             return action_probs[a]
@@ -624,7 +628,9 @@ class Policy(abc.ABC):
         """
         log_action_probs = self.log_prob_for_state(s)
         if a > len(log_action_probs) - 1:
-            warnings.warn(f"Requested log π({a}|{s}), but |A| = {len(log_action_probs)} - returning 0.0. If {a} is a dummy action you can safely ignore this warning.")
+            warnings.warn(
+                f"Requested log π({a}|{s}), but |A| = {len(log_action_probs)} - returning 0.0. If {a} is a dummy action you can safely ignore this warning."
+            )
             return 0.0
         else:
             return log_action_probs[a]
@@ -712,10 +718,12 @@ class EpsilonGreedyPolicy(Policy):
             (numpy array): Probability distribution over actions, respecting the
                 self.stochastic and self.epsilon parameters
         """
-        
+
         num_states, num_actions = self.q.shape
         if s > num_states - 1:
-            warnings.warn(f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning.")
+            warnings.warn(
+                f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning."
+            )
             return np.ones(num_actions)
 
         # Get a list of the optimal actions
@@ -768,12 +776,14 @@ class OptimalPolicy(EpsilonGreedyPolicy):
         self.q_precision = q_precision
 
     def prob_for_state(self, s):
-        
+
         num_states, num_actions = self.q.shape
         if s > num_states - 1:
-            warnings.warn(f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning.")
+            warnings.warn(
+                f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning."
+            )
             return np.ones(num_actions)
-        
+
         if self.stochastic:
 
             if self.q_precision is None:
@@ -846,12 +856,14 @@ class BoltzmannExplorationPolicy(Policy):
         return np.exp(self.log_prob_for_state(s))
 
     def log_prob_for_state(self, s):
-        
+
         num_states, num_actions = self.q.shape
         if s > num_states - 1:
-            warnings.warn(f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning.")
+            warnings.warn(
+                f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning."
+            )
             return np.ones(num_actions)
-        
+
         log_prob = self.scale * self.q[s]
         total_log_prob = np.log(np.sum(np.exp(log_prob)))
         log_prob -= total_log_prob
