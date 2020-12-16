@@ -350,34 +350,63 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
     reward = Linear(theta)
     q_star = q_vi(xtr, phi, reward)
     pi_star = OptimalPolicy(q_star, stochastic=False)
-
-    # Initialize starting point
-    dq_dtheta = np.zeros((len(xtr.states), len(xtr.actions), len(phi)))
+    
+    @jit(nopython=True)
+    def _nb_fpi(states, actions, t_mat, gamma, phi, pi_star, tol):
+        """Plain-object core loop for numba optimization
+        
+        TODO ajs 07/dec/2020 Handle state-action-state feature functions?
+        
+        Args:
+            states (list): States
+            actions (list): Actions
+            t_mat (numpy array): |S|x|A|x|S| transition matrix
+            gamma (float): Discount factor
+            phi (numpy array): |S|x|A|x|φ| state-action feature matrix
+            pi_star (numpy array): |S|x|A| policy matrix
+            tol (float): Convergence threshold
+        
+        Returns:
+            |S|x|A|x|φ| Estimate of gradient of Q function
+        """
+        # Initialize
+        dq_dtheta = phi.copy()
+        
+        # Apply fixed point iteration
+        it = 0
+        while True:
+            # Use full-width backups
+            dq_dtheta_old = dq_dtheta.copy()
+            dq_dtheta[:, :, :] = 0.0
+            for s1 in states:
+                for a1 in actions:
+                    dq_dtheta[s1, a1, :] = phi[s1, a1, :]
+                    for s2 in states:
+                        for a2 in actions:
+                            dq_dtheta[s1, a1, :] += (
+                                gamma
+                                * t_mat[s1, a1, s2]
+                                * pi_star[s2, a2]
+                                * dq_dtheta_old[s2, a2, :]
+                            )
+    
+            delta = np.max(np.abs(dq_dtheta_old.flatten() - dq_dtheta.flatten()))
+            it += 1
+    
+            if delta <= tol:
+                break
+    
+        return dq_dtheta
+    
+    # Build plain object arrays
+    _pi_star = np.zeros((len(xtr.states), len(xtr.actions)))
+    _phi = np.zeros((len(xtr.states), len(xtr.actions), len(phi)))
     for s in xtr.states:
         for a in xtr.actions:
-            dq_dtheta[s, a, :] = phi(s, a)
-
-    # Apply fixed point iteration
-    for _ in it.count():
-        # Use full-width backups
-        dq_dtheta_old = dq_dtheta.copy()
-        dq_dtheta[:, :, :] = 0.0
-        for s1 in xtr.states:
-            for a1 in xtr.actions:
-                dq_dtheta[s1, a1, :] = phi(s1, a1)
-                for s2 in xtr.states:
-                    for a2 in xtr.actions:
-                        dq_dtheta[s1, a1, :] += (
-                            xtr.gamma
-                            * xtr.t_mat[s1, a1, s2]
-                            * pi_star.prob_for_state_action(s2, a2)
-                            * dq_dtheta_old[s2, a2, :]
-                        )
-
-        delta = np.max(np.abs(dq_dtheta_old.flatten() - dq_dtheta.flatten()))
-
-        if delta <= tol:
-            break
+            _pi_star[s, a] = pi_star.prob_for_state_action(s, a)
+            _phi[s, a, :] = phi(s, a)
+    
+    dq_dtheta = _nb_fpi(xtr.states, xtr.actions, xtr.t_mat, xtr.gamma, _phi, _pi_star, tol)
 
     return dq_dtheta
 
