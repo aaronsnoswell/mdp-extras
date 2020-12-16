@@ -323,6 +323,8 @@ def pi_eval(xtr, phi, reward, policy, eps=1e-6, num_runs=1):
 
 def q_grad_fpi(theta, xtr, phi, tol=1e-3):
     """Estimate the Q-gradient with a Fixed Point Iteration
+        
+    TODO ajs 07/dec/2020 Handle state-action-state feature functions?
     
     This method uses a Fixed-Point estimate by Neu and Szepesvari 2007, and is
     considered by me to be the 'gold standard' for Q-gradient estimation.
@@ -344,6 +346,10 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
     """
     
     xtr = xtr.unpadded
+
+    assert (
+        phi.type == phi.Type.OBSERVATION or phi.type == phi.Type.OBSERVATION_ACTION
+    ), "Currently, state-action-state features are not supported with this method"
 
     # Get optimal *DETERMINISTIC* policy
     # (the fixed point iteration is only valid for deterministic policies)
