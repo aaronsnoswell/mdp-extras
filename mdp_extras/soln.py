@@ -124,7 +124,7 @@ def v_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
         (numpy array): |S|x|A| matrix of state-action values
     """
 
-    #@jit(nopython=True)
+    @jit(nopython=True)
     def _nb_value_iteration(
         t_mat, gamma, rs, rsa, rsas, eps=1e-6, verbose=False, max_iter=None
     ):
