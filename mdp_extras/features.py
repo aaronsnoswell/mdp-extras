@@ -229,7 +229,8 @@ class Disjoint(FeatureFunction):
             else:
                 raise ValueError
         except IndexError:
-            warnings.warn(
-                f"Requested φ({o1}, {a}, {o2}), however slice is out-of-bounds. This could be due to using padded rollouts, in which case you can safely ignore this warning."
-            )
+            pass
+            # warnings.warn(
+            #     f"Requested φ({o1}, {a}, {o2}), however slice is out-of-bounds. This could be due to using padded rollouts, in which case you can safely ignore this warning."
+            # )
         return self._vec.copy()
