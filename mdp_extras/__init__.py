@@ -17,6 +17,7 @@ from mdp_extras.soln import (
     BoltzmannExplorationPolicy,
 )
 from mdp_extras.utils import (
+    PaddedMDPWarning,
     trajectory_reward,
     compute_parents_children,
     DiscreteExplicitLinearEnv,
