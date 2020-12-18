@@ -42,7 +42,7 @@ class DiscreteExplicitExtras:
 
         # Has this MDP been padded with an extra state and action?
         # See utils.padding_trick()
-        self._padded = padded
+        self._is_padded = padded
 
     @staticmethod
     def fromdiscrete(env, gamma=1.0):
@@ -128,16 +128,22 @@ class DiscreteExplicitExtras:
         return self._gamma
 
     @property
-    def padded(self):
-        return self._padded
-    
+    def is_padded(self):
+        return self._is_padded
+
     @property
-    def unpadded(self):
-        if not self.padded:
+    def as_unpadded(self):
+        if not self.is_padded:
             return self
         else:
             return DiscreteExplicitExtras(
-                self.states[:-1], self.actions[:-1], self.p0s[:-1], self.t_mat[:-1, :-1, :-1], self.terminal_state_mask[:-1], self.gamma, False
+                self.states[:-1],
+                self.actions[:-1],
+                self.p0s[:-1],
+                self.t_mat[:-1, :-1, :-1],
+                self.terminal_state_mask[:-1],
+                self.gamma,
+                False,
             )
 
     def path_log_probability(self, p):

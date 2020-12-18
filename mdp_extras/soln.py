@@ -12,7 +12,7 @@ from numba import jit
 
 from mdp_extras.features import FeatureFunction
 from mdp_extras.rewards import Linear
-from mdp_extras.utils import DiscreteExplicitLinearEnv
+from mdp_extras.utils import DiscreteExplicitLinearEnv, PaddedMDPWarning
 
 
 def q_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
@@ -89,7 +89,7 @@ def q_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
 
         return q_value_fn
 
-    xtr = xtr.unpadded
+    xtr = xtr.as_unpadded
     return _nb_q_value_iteration(
         xtr.t_mat, xtr.gamma, *reward.structured(xtr, phi), eps, verbose, max_iter
     )
@@ -178,7 +178,7 @@ def v_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
 
         return value_fn
 
-    xtr = xtr.unpadded
+    xtr = xtr.as_unpadded
     return _nb_value_iteration(
         xtr.t_mat, xtr.gamma, *reward.structured(xtr, phi), eps, verbose, max_iter
     )
@@ -234,7 +234,7 @@ def v2q(v_star, xtr, phi, reward):
 
         return q_star
 
-    xtr = xtr.unpadded
+    xtr = xtr.as_unpadded
     return _nb_q_from_v(v_star, xtr.t_mat, xtr.gamma, *reward.structured(xtr, phi))
 
 
@@ -303,7 +303,7 @@ def pi_eval(xtr, phi, reward, policy, eps=1e-6, num_runs=1):
 
         return v_pi
 
-    xtr = xtr.unpadded
+    xtr = xtr.as_unpadded
     policy_state_values = []
     for _ in range(num_runs):
         action_vector = np.array([policy.predict(s)[0] for s in xtr.states])
@@ -344,12 +344,12 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
     Returns:
         (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
     """
-    
-    xtr = xtr.unpadded
 
     assert (
         phi.type == phi.Type.OBSERVATION or phi.type == phi.Type.OBSERVATION_ACTION
     ), "Currently, state-action-state features are not supported with this method"
+
+    xtr = xtr.as_unpadded
 
     # Get optimal *DETERMINISTIC* policy
     # (the fixed point iteration is only valid for deterministic policies)
@@ -448,7 +448,7 @@ def q_grad_sim(
         (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
     """
 
-    xtr = xtr.unpadded
+    xtr = xtr.as_unpadded
 
     # Get optimal policy
     reward = Linear(theta)
@@ -494,7 +494,7 @@ def q_grad_nd(theta, xtr, phi, dtheta=0.01):
         (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
     """
 
-    xtr = xtr.unpadded
+    xtr = xtr.as_unpadded
 
     # Calculate expected feature vector under pi for all starting state-action pairs
     dq_dtheta = np.zeros((len(xtr.states), len(xtr.actions), len(phi)))
@@ -616,7 +616,8 @@ class Policy(abc.ABC):
         action_probs = self.prob_for_state(s)
         if a > len(action_probs) - 1:
             warnings.warn(
-                f"Requested π({a}|{s}), but |A| = {len(action_probs)} - returning 1.0. If {a} is a dummy action you can safely ignore this warning."
+                f"Requested π({a}|{s}), but |A| = {len(action_probs)} - returning 1.0. If {a} is a dummy action you can safely ignore this warning.",
+                PaddedMDPWarning,
             )
             return 1.0
         else:
@@ -635,7 +636,8 @@ class Policy(abc.ABC):
         log_action_probs = self.log_prob_for_state(s)
         if a > len(log_action_probs) - 1:
             warnings.warn(
-                f"Requested log π({a}|{s}), but |A| = {len(log_action_probs)} - returning 0.0. If {a} is a dummy action you can safely ignore this warning."
+                f"Requested log π({a}|{s}), but |A| = {len(log_action_probs)} - returning 0.0. If {a} is a dummy action you can safely ignore this warning.",
+                PaddedMDPWarning,
             )
             return 0.0
         else:
@@ -692,8 +694,6 @@ class Policy(abc.ABC):
 
 class EpsilonGreedyPolicy(Policy):
     """An Epsilon Greedy Policy wrt. a provided Q function
-    
-    Provides a .predict(s) method to match the stable-baselines policy API
     """
 
     def __init__(self, q, epsilon=0.1):
@@ -728,7 +728,8 @@ class EpsilonGreedyPolicy(Policy):
         num_states, num_actions = self.q.shape
         if s > num_states - 1:
             warnings.warn(
-                f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning."
+                f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning.",
+                PaddedMDPWarning,
             )
             return np.ones(num_actions)
 
@@ -786,7 +787,8 @@ class OptimalPolicy(EpsilonGreedyPolicy):
         num_states, num_actions = self.q.shape
         if s > num_states - 1:
             warnings.warn(
-                f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning."
+                f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning.",
+                PaddedMDPWarning,
             )
             return np.ones(num_actions)
 
@@ -828,8 +830,6 @@ class OptimalPolicy(EpsilonGreedyPolicy):
 
 class BoltzmannExplorationPolicy(Policy):
     """A Boltzmann exploration policy wrt. a provided Q function
-    
-    Provides a .predict(s) method to match the stable-baselines policy API
     """
 
     def __init__(self, q, scale=1.0):
@@ -866,7 +866,8 @@ class BoltzmannExplorationPolicy(Policy):
         num_states, num_actions = self.q.shape
         if s > num_states - 1:
             warnings.warn(
-                f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning."
+                f"Requested π(*|{s}), but |S| = {num_states}, returning [1.0, ...]. If {s} is a dummy state you can safely ignore this warning.",
+                PaddedMDPWarning,
             )
             return np.ones(num_actions)
 

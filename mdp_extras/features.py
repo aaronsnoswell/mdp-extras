@@ -4,6 +4,8 @@ from enum import Enum
 
 import numpy as np
 
+from mdp_extras.utils import PaddedMDPWarning
+
 
 class FeatureFunction(abc.ABC):
     """Abstract feature function base class"""
@@ -230,7 +232,8 @@ class Disjoint(FeatureFunction):
                 raise ValueError
         except IndexError:
             pass
-            # warnings.warn(
-            #     f"Requested φ({o1}, {a}, {o2}), however slice is out-of-bounds. This could be due to using padded rollouts, in which case you can safely ignore this warning."
-            # )
+            warnings.warn(
+                f"Requested φ({o1}, {a}, {o2}), however slice is out-of-bounds. This could be due to using padded rollouts, in which case you can safely ignore this warning.",
+                PaddedMDPWarning
+            )
         return self._vec.copy()

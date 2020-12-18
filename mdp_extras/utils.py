@@ -7,6 +7,10 @@ import numpy as np
 from gym.spaces import Discrete
 
 
+class PaddedMDPWarning(UserWarning):
+    pass
+
+
 def compute_parents_children(t_mat, terminal_state_mask):
     """Compute parent and child dictionaries
     
