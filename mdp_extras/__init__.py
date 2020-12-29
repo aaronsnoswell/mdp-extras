@@ -1,8 +1,8 @@
 """Move key objects to module level score for convenience"""
 
-from mdp_extras.extras import DiscreteExplicitExtras
-from mdp_extras.features import Indicator, Disjoint
-from mdp_extras.rewards import Linear
+from mdp_extras.extras import DiscreteImplicitExtras, DiscreteExplicitExtras
+from mdp_extras.features import FeatureFunction, Indicator, Disjoint
+from mdp_extras.rewards import RewardFunction, Linear
 from mdp_extras.soln import (
     q_vi,
     q2v,
@@ -12,6 +12,7 @@ from mdp_extras.soln import (
     q_grad_nd,
     q_grad_sim,
     q_grad_fpi,
+    Policy,
     EpsilonGreedyPolicy,
     OptimalPolicy,
     BoltzmannExplorationPolicy,
