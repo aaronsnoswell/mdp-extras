@@ -1,6 +1,7 @@
 """Extra object definitions
 """
 
+import abc
 import warnings
 
 import numpy as np
@@ -8,8 +9,96 @@ import numpy as np
 from mdp_extras.utils import compute_parents_children
 
 
+class DiscreteImplicitExtras(abc.ABC):
+    """Extras for a discrete state, discrete action, implicit dynamics MDP
+    
+    This MDP definition is defined for larger problems where the states and actions are
+    still discrete, but the transition matrix is too large to store in a dense matrix.
+    Instead, the dynamics are available implicitly via a function T(s, a, s') that
+    returns the probability of a transition.
+    
+    Internally, vectors are now represented by dictionaries, as this allows non-integer
+    states and actions, with better than linear lookup time.
+    """
+
+    def __init__(self):
+        """C-tor
+        """
+        self._states = None
+        self._actions = None
+        self._p0s = None
+        self._terminal_state_mask = None
+        self._gamma = None
+        self._parents = None
+        self._children = None
+
+    @property
+    def states(self):
+        """Iterable over MDP states"""
+        return self._states
+
+    @property
+    def actions(self):
+        """Iterable over MDP actions"""
+        return self._actions
+
+    @property
+    def p0s(self):
+        """|S| dict of starting state probabilities"""
+        return self._p0s
+
+    @property
+    def t_prob(self, s1, a, s2):
+        """Get probability of a transition"""
+        raise NotImplementedError
+
+    @property
+    def terminal_state_mask(self):
+        """|S| dict indicating terminal states"""
+        return self._terminal_state_mask
+
+    @property
+    def parents(self):
+        """|S| dict mapping a state to it's (s, a) parents"""
+        return self._parents
+
+    @property
+    def children(self):
+        """|S| dict mapping a state to it's (a, s') children"""
+        return self._children
+
+    @property
+    def gamma(self):
+        """Discount factor"""
+        return self._gamma
+
+    def path_log_probability(self, p):
+        """Get log probability of a state-action path under MDP dynamics
+        
+        Args:
+            p (list): (s, a) path, stored as a list
+        
+        Returns:
+            (float): Log probability of path under dynamics
+        """
+        path_log_prob = np.log(self.p0s[p[0][0]])
+        for (s1, a), (s2, _) in zip(p[:-1], p[1:]):
+            path_log_prob += np.log(self.t_prob(s1, a, s2))
+        return path_log_prob
+
+
 class DiscreteExplicitExtras:
-    """Extras for a discrete state, discrete action, explicit dynamics MDP"""
+    """Extras for a discrete state, discrete action, explicit dynamics MDP
+    
+    This MDP definition is designed for small synthetic problems (sometimes called
+    tabular problems) where the state and action spaces are small enough that the
+    transition dynamics can be explicitly listed as a non-sparse matrix that can be
+    stored in memory. E.g. less than a few hundred states and less than a few thousand
+    actions.
+    
+    The states and actions here are integers, allowing efficient indexing into various
+    property matrices and vectors.
+    """
 
     def __init__(
         self, states, actions, p0s, t_mat, terminal_state_mask, gamma=1.0, padded=False
