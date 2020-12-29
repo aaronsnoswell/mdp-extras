@@ -9,26 +9,18 @@ import numpy as np
 from mdp_extras.utils import compute_parents_children
 
 
-class DiscreteImplicitExtras(abc.ABC):
-    """Extras for a discrete state, discrete action, implicit dynamics MDP
-    
-    This MDP definition is defined for larger problems where the states and actions are
-    still discrete, but the transition matrix is too large to store in a dense matrix.
-    Instead, the dynamics are available implicitly via a function T(s, a, s') that
-    returns the probability of a transition.
-    
-    Internally, vectors are now represented by dictionaries, as this allows non-integer
-    states and actions, with better than linear lookup time.
-    """
+class BaseExtras(abc.ABC):
+    """Base class for MDP definitions"""
 
     def __init__(self):
-        """C-tor
-        """
+        """C-tor"""
         self._states = None
         self._actions = None
         self._p0s = None
         self._terminal_state_mask = None
+        self._is_deterministic = None
         self._gamma = None
+        self._is_padded = None
         self._parents = None
         self._children = None
 
@@ -44,18 +36,26 @@ class DiscreteImplicitExtras(abc.ABC):
 
     @property
     def p0s(self):
-        """|S| dict of starting state probabilities"""
+        """|S| vector of starting state probabilities"""
         return self._p0s
 
     @property
-    def t_prob(self, s1, a, s2):
-        """Get probability of a transition"""
-        raise NotImplementedError
+    def terminal_state_mask(self):
+        """|S| vector indicating terminal states"""
+        return self._terminal_state_mask
 
     @property
-    def terminal_state_mask(self):
-        """|S| dict indicating terminal states"""
-        return self._terminal_state_mask
+    def is_deterministic(self):
+        return self._is_deterministic
+
+    @property
+    def gamma(self):
+        """Discount factor"""
+        return self._gamma
+
+    @property
+    def is_padded(self):
+        return self._is_padded
 
     @property
     def parents(self):
@@ -67,10 +67,38 @@ class DiscreteImplicitExtras(abc.ABC):
         """|S| dict mapping a state to it's (a, s') children"""
         return self._children
 
+    def path_log_probability(self, p):
+        """Get log probability of a state-action path under MDP dynamics
+        
+        Args:
+            p (list): (s, a) path, stored as a list
+        
+        Returns:
+            (float): Log probability of path under dynamics
+        """
+        raise NotImplementedError
+
+
+class DiscreteImplicitExtras(BaseExtras):
+    """Extras for a discrete state, discrete action, implicit dynamics MDP
+    
+    This MDP definition is defined for larger problems where the states and actions are
+    still discrete, but the transition matrix is too large to store in a dense matrix.
+    Instead, the dynamics are available implicitly via a function T(s, a, s') that
+    returns the probability of a transition.
+    """
+
+    def __init__(self):
+        """C-tor
+        """
+        super().__init__()
+        self._parents_fixedsize = None
+        self._children_fixedsize = None
+
     @property
-    def gamma(self):
-        """Discount factor"""
-        return self._gamma
+    def t_prob(self, s1, a, s2):
+        """Get probability of a transition"""
+        raise NotImplementedError
 
     def path_log_probability(self, p):
         """Get log probability of a state-action path under MDP dynamics
@@ -86,8 +114,18 @@ class DiscreteImplicitExtras(abc.ABC):
             path_log_prob += np.log(self.t_prob(s1, a, s2))
         return path_log_prob
 
+    @property
+    def parents_fixedsize(self):
+        """|S|x? fixed size array mapping states to parent states"""
+        return self._parents_fixedsize
 
-class DiscreteExplicitExtras:
+    @property
+    def children_fixedsize(self):
+        """|S|x? fixed size array mapping states to children states"""
+        return self._children_fixedsize
+
+
+class DiscreteExplicitExtras(BaseExtras):
     """Extras for a discrete state, discrete action, explicit dynamics MDP
     
     This MDP definition is designed for small synthetic problems (sometimes called
@@ -117,6 +155,7 @@ class DiscreteExplicitExtras:
             padded (bool): True if this MDP has been padded to include an extra state
                 and action.
         """
+        super().__init__()
 
         self._states = states
         self._actions = actions
@@ -177,48 +216,9 @@ class DiscreteExplicitExtras:
         )
 
     @property
-    def states(self):
-        """Iterable over MDP states"""
-        return self._states
-
-    @property
-    def actions(self):
-        """Iterable over MDP actions"""
-        return self._actions
-
-    @property
-    def p0s(self):
-        """|S| vector of starting state probabilities"""
-        return self._p0s
-
-    @property
     def t_mat(self):
         """|S|x|A|x|S| array of transition probabilities"""
         return self._t_mat
-
-    @property
-    def terminal_state_mask(self):
-        """|S| vector indicating terminal states"""
-        return self._terminal_state_mask
-
-    @property
-    def parents(self):
-        """Dict mapping a state to it's (s, a) parents"""
-        return self._parents
-
-    @property
-    def children(self):
-        """Dict mapping a state to it's (a, s') children"""
-        return self._children
-
-    @property
-    def gamma(self):
-        """Discount factor"""
-        return self._gamma
-
-    @property
-    def is_padded(self):
-        return self._is_padded
 
     @property
     def as_unpadded(self):

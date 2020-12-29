@@ -1,6 +1,6 @@
 """Move key objects to module level score for convenience"""
 
-from mdp_extras.extras import DiscreteImplicitExtras, DiscreteExplicitExtras
+from mdp_extras.extras import BaseExtras, DiscreteImplicitExtras, DiscreteExplicitExtras
 from mdp_extras.features import FeatureFunction, Indicator, Disjoint
 from mdp_extras.rewards import RewardFunction, Linear
 from mdp_extras.soln import (
