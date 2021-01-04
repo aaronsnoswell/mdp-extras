@@ -161,17 +161,21 @@ class Indicator(FeatureFunction):
         self.type.check_args(o1, a, o2)
 
         self._vec.flat[:] = 0
-        if self.type == FeatureFunction.Type.OBSERVATION:
-            self._vec[o1] = 1.0
-            return self._vec.flatten().copy()
-        elif self.type == FeatureFunction.Type.OBSERVATION_ACTION:
-            self._vec[o1, a] = 1.0
-            return self._vec.flatten().copy()
-        elif self.type == FeatureFunction.Type.OBSERVATION_ACTION_OBSERVATION:
-            self._vec[o1, a, o2] = 1.0
-            return self._vec.flatten().copy()
-        else:
-            raise ValueError
+        try:
+            if self.type == FeatureFunction.Type.OBSERVATION:
+                self._vec[o1] = 1.0
+            elif self.type == FeatureFunction.Type.OBSERVATION_ACTION:
+                self._vec[o1, a] = 1.0
+            elif self.type == FeatureFunction.Type.OBSERVATION_ACTION_OBSERVATION:
+                self._vec[o1, a, o2] = 1.0
+            else:
+                raise ValueError
+        except IndexError:
+            warnings.warn(
+                f"Requested φ({o1}, {a}, {o2}), however slice is out-of-bounds. This could be due to using padded rollouts, in which case you can safely ignore this warning.",
+                PaddedMDPWarning
+            )
+        return self._vec.flatten().copy()
 
 
 class Disjoint(FeatureFunction):
@@ -231,7 +235,6 @@ class Disjoint(FeatureFunction):
             else:
                 raise ValueError
         except IndexError:
-            pass
             warnings.warn(
                 f"Requested φ({o1}, {a}, {o2}), however slice is out-of-bounds. This could be due to using padded rollouts, in which case you can safely ignore this warning.",
                 PaddedMDPWarning
