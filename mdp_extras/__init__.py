@@ -22,6 +22,5 @@ from mdp_extras.utils import (
     trajectory_reward,
     compute_parents_children,
     DiscreteExplicitLinearEnv,
-    padding_trick,
-    padding_trick_mm,
+    padding_trick
 )

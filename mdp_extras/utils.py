@@ -1,6 +1,7 @@
 """Various utilities for generating 'extra' objects"""
 
 import copy
+import types
 import warnings
 
 import numpy as np
@@ -102,7 +103,7 @@ class DiscreteExplicitLinearEnv:
         return self.state, reward, done, info
 
 
-def padding_trick(xtr, phi, reward, rollouts=None, max_length=None):
+def padding_trick(xtr, rollouts=None, max_length=None):
     """Apply padding trick, adding an auxiliary state and action to an MDP
     
     We gain a O(|S|) space and time efficiency improvement with our MaxEnt IRL algorithm
@@ -112,8 +113,6 @@ def padding_trick(xtr, phi, reward, rollouts=None, max_length=None):
     
     Args:
         xtr (DiscreteExplicitExtras): Extras object
-        phi (Indicator): Indicator/Disjoint feature function
-        reward (Linear): Linear reward function
         
         rollouts (list): List of [(s, a), (s, a), ..., (s, None)] rollouts to pad
         max_length (int): Optional maximum length to pad to, otherwise paths are padded
@@ -121,74 +120,149 @@ def padding_trick(xtr, phi, reward, rollouts=None, max_length=None):
         
     Returns:
         (DiscreteExplicitExtras): Extras object, padded with auxiliary state and action
-        (Indicator): Indicator feature function, padded with auxiliary state and action
-        (Linear): Linear reward function, padded with auxiliary state and action
-        
-        (list): List of rollouts, padded to max_length. Only returned if rollouts is not
-            None
+        (list): List of rollouts, padded to max_length, or None if rollouts was not
+            passed.
     """
 
-    from mdp_extras import DiscreteExplicitExtras, Indicator, Disjoint, Linear
-
-    t_mat = np.pad(xtr.t_mat, (0, 1), mode="constant")
-    s_aux = t_mat.shape[0] - 1
-    a_aux = t_mat.shape[1] - 1
-
-    p0s = np.pad(xtr.p0s, (0, 1), mode="constant")
-    states = np.arange(t_mat.shape[0])
-    actions = np.arange(t_mat.shape[1])
-
-    # Auxiliary state is absorbing
-    t_mat[-1, -1, -1] = 1
-
-    # Terminal states are no longer absorbing
-    for terminal_state in np.argwhere(xtr.terminal_state_mask):
-        t_mat[terminal_state, :, terminal_state] = 0
-    terminal_state_mask = np.zeros(t_mat.shape[0])
-
-    # Auxiliary state reachable anywhere if auxiliary action is taken
-    t_mat[:, -1, -1] = 1
-
-    xtr2 = DiscreteExplicitExtras(
-        states, actions, p0s, t_mat, terminal_state_mask, xtr.gamma, True
+    from mdp_extras import (
+        DiscreteImplicitExtras,
+        DiscreteExplicitExtras
     )
 
+    # Create the auxiliary state
+    s_aux = len(xtr.states)
+    states = np.pad(xtr.states, (0, 1), mode="constant", constant_values=s_aux)
+
+    # Create the auxiliary state
+    a_aux = len(xtr.actions)
+    actions = np.pad(xtr.actions, (0, 1), mode="constant", constant_values=a_aux)
+
+    # Add extra state and action to p0s - auxiliary state has 0 starting probability
+    p0s = np.pad(xtr.p0s, (0, 1), mode="constant", constant_values=0.0)
+
+    if isinstance(xtr, DiscreteExplicitExtras):
+        # Handle tabular MDP
+
+        t_mat = np.pad(xtr.t_mat, (0, 1), mode="constant")
+
+        # Auxiliary state is absorbing
+        t_mat[-1, -1, -1] = 1
+
+        # Terminal states are no longer absorbing
+        for terminal_state in np.argwhere(xtr.terminal_state_mask):
+            t_mat[terminal_state, :, terminal_state] = 0
+        terminal_state_mask = np.zeros(t_mat.shape[0])
+
+        # Auxiliary state reachable anywhere if auxiliary action is taken
+        t_mat[:, -1, -1] = 1
+
+        xtr2 = DiscreteExplicitExtras(
+            states, actions, p0s, t_mat, terminal_state_mask, xtr.gamma, True
+        )
+
+    elif isinstance(xtr, DiscreteImplicitExtras):
+        # Handle implicit dynamics MDP
+        
+        # Duplicate the extras as a starting point
+        xtr2 = copy.copy(xtr)
+
+        def t_prob_padded(self, s1, a, s2):
+            """Transition probability function for padded DiscreteImplicitExtras object"""
+            s_aux = self.states[-1]
+            a_aux = self.actions[-1]
+
+            if s1 == s_aux:
+                # Starting at auxiliary state you can only go to the auxiliary state
+                if s2 == s_aux:
+                    return 1.0
+                else:
+                    return 0.0
+            else:
+                # Starting at any other state
+                if a == a_aux:
+                    # Taking auxiliary action leads you to the auxiliary state only
+                    if s2 == s_aux:
+                        return 1.0
+                    else:
+                        return 0.0
+                else:
+                    # Taking any other action
+                    if s2 == s_aux:
+                        # You cannot reach the auxiliary state in any other way
+                        return 0.0
+                    else:
+                        if s1 == s2 and self._terminal_state_mask_old[s1]:
+                            # Terminal states are no longer absorbing
+                            return 0.0
+                        else:
+                            # Refer to existing dynamics for this transition
+                            return self.t_prob_old(s1, a, s2)
+
+        # Store copies of old objects
+        xtr2.t_prob_old = xtr2.t_prob
+        xtr2._terminal_state_mask_old = xtr2._terminal_state_mask
+        
+        # Overwrite properties
+        xtr2._states = states
+        xtr2._actions = actions
+        xtr2._p0s = p0s
+
+        # Update transition dynamics function
+        xtr2.t_prob = types.MethodType(t_prob_padded, xtr2)
+
+        # Clear terminal state mask
+        xtr2._terminal_state_mask = np.zeros_like(xtr2._states)
+
+        # Update children dict
+        xtr2._children[s_aux] = []
+        max_children = 0
+        for s in xtr2.states:
+            xtr2._children[s].append(s_aux)
+            max_children = max(max_children, len(xtr2._children[s]))
+
+        # Update parents
+        xtr2._parents[s_aux] = xtr2.states.copy()
+
+        # Update children_fixedsize array
+        xtr2._children_fixedsize = (
+            np.zeros((len(xtr2._states), max_children), dtype=int) - 1
+        )
+        xtr2._children_fixedsize[
+            :-1, : xtr.children_fixedsize.shape[1]
+        ] = xtr.children_fixedsize.copy()
+        xtr2._children_fixedsize[s_aux, : len(xtr2._children[s_aux])] = xtr2._children[
+            s_aux
+        ]
+
+        warnings.warn("Padding a DiscreteImplicitExtras object will *not* update the parents_fixedsize member as this leads to a MemoryError. Please handle this property with caution.")
+        # # Update parents_fixedsize array
+        # xtr2._parents_fixedsize = csr_matrix()
+        # # XXX ajs MemoryError here
+        # xtr2._parents_fixedsize = (
+        #     np.zeros((len(xtr2._states), len(xtr2._states)), dtype=int) - 1
+        # )
+        # xtr2._parents_fixedsize[
+        #     :-1, : xtr.parents_fixedsize.shape[1]
+        # ] = xtr.parents_fixedsize.copy()
+        # xtr2._parents_fixedsize[s_aux:] = xtr2.states.copy()
+
+        # Flag as padded
+        xtr2._is_padded = True
+
+    else:
+
+        raise ValueError(f"Unknown MDP class {xtr}")
+
     # Auxiliary state, action don't modify rewards
-    if isinstance(phi, Indicator):
-        # Pad an indicator feature function and linear reward function
-        rs, rsa, rsas = reward.structured(xtr, phi)
-        rs = np.pad(rs, (0, 1), mode="constant")
-        rs[-1] = 0
-
-        rsa = np.pad(rsa, (0, 1), mode="constant")
-        rsa[:, -1] = 0
-
-        rsas = np.pad(rsas, (0, 1), mode="constant")
-        rsas[:, 0:-1, -1] = -np.inf  # Illegal transition
-        rsas[:, -1, -1] = 0
-
-        if phi.type == Indicator.Type.OBSERVATION:
-            r2 = Linear(rs.flatten())
-        elif phi.type == Indicator.Type.OBSERVATION_ACTION:
-            r2 = Linear(rsa.flatten())
-        elif phi.type == Indicator.Type.OBSERVATION_ACTION_OBSERVATION:
-            r2 = Linear(rsas.flatten())
-        else:
-            raise ValueError
-
-        phi2 = Indicator(phi.type, xtr2)
-
-    elif isinstance(phi, Disjoint):
-        # Pad a disjoint feature function and linear reward function
-
-        phi2 = phi
-        r2 = reward
-    else:
-        raise ValueError
-
-    if rollouts is None:
-        return xtr2, phi2, r2, None
-    else:
+    # To achive this we simply leave the feature function alone - if a feature of
+    # an auxiliary state/action is requested, we will throw a warning (which can be
+    # suppressed)
+    
+    rollouts2 = None
+    
+    if rollouts is not None:
+        # Pad rollouts as well
+        
         # Measure the length of the rollouts
         r_len = [len(r) for r in rollouts]
         if max_length is None:
@@ -210,46 +284,4 @@ def padding_trick(xtr, phi, reward, rollouts=None, max_length=None):
                 rollout2.append((s_aux, None))
             rollouts2.append(rollout2)
 
-        return xtr2, phi2, r2, rollouts2
-
-
-def padding_trick_mm(xtr, phi, rewards, rollouts=None, max_length=None):
-    """Apply padding trick to a Multi Modal MDP
-    
-    Args:
-        xtr (DiscreteExplicitExtras): Extras object
-        phi (Indicator): Indicator/Disjoint feature function
-        rewards (list/dict): List or dict of Linear reward functions
-        
-        rollouts (list): List of [(s, a), (s, a), ..., (s, None)] rollouts to pad
-        max_length (int): Optional maximum length to pad to, otherwise paths are padded
-            to match the length of the longest path
-        
-    Returns:
-        (DiscreteExplicitExtras): Extras object, padded with auxiliary state and action
-        (Indicator): Indicator feature function, padded with auxiliary state and action
-        (list/dict): List or dict of Linear reward functions, padded with auxiliary
-            state and action
-        
-        (list): List of rollouts, padded to max_length. Only returned if rollouts is not
-            None
-    
-    """
-    if isinstance(rewards, list):
-        rewards_padded = []
-        for reward in rewards:
-            xtr_padded, phi_padded, reward_padded, rollouts_padded = padding_trick(
-                xtr, phi, reward, rollouts, max_length
-            )
-            rewards_padded.append(reward)
-        return xtr_padded, phi_padded, rewards_padded, rollouts_padded
-    elif isinstance(rewards, dict):
-        rewards_padded = {}
-        for reward_name, reward in rewards.items():
-            xtr_padded, phi_padded, reward_padded, rollouts_padded = padding_trick(
-                xtr, phi, reward, rollouts, max_length
-            )
-            rewards_padded[reward_name] = reward_padded
-        return xtr_padded, phi_padded, rewards_padded, rollouts_padded
-    else:
-        raise ValueError
+    return xtr2, rollouts2
