@@ -117,6 +117,24 @@ class FeatureFunction(abc.ABC):
 
         return phi_bar
 
+    def feature_distance(self, demo_1, demo_2, gamma=1.0):
+        """Compute feature distance between two demonstrations
+        
+        This can be used as a cheap symmetric metric for preference matching between
+        two paths
+        
+        Args:
+            demo_1 (list): Path 1 (list of (s, a))
+            demo_2 (list): Path 2 (list of (s, a))
+            gamma (float): Discount factor
+        
+        Returns:
+            (float): Feature distance, same units as the feature function
+        """
+        phi_bar_1 = self.expectation([demo_1], gamma=gamma)
+        phi_bar_2 = self.expectation([demo_2], gamma=gamma)
+        return np.linalg.norm(phi_bar_1 - phi_bar_2)
+
 
 class Indicator(FeatureFunction):
     """Indicator feature function"""
@@ -173,7 +191,7 @@ class Indicator(FeatureFunction):
         except IndexError:
             warnings.warn(
                 f"Requested φ({o1}, {a}, {o2}), however slice is out-of-bounds. This could be due to using padded rollouts, in which case you can safely ignore this warning.",
-                PaddedMDPWarning
+                PaddedMDPWarning,
             )
         return self._vec.flatten().copy()
 
@@ -237,6 +255,6 @@ class Disjoint(FeatureFunction):
         except IndexError:
             warnings.warn(
                 f"Requested φ({o1}, {a}, {o2}), however slice is out-of-bounds. This could be due to using padded rollouts, in which case you can safely ignore this warning.",
-                PaddedMDPWarning
+                PaddedMDPWarning,
             )
         return self._vec.copy()
