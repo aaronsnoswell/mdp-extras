@@ -2,6 +2,7 @@
 
 import copy
 import types
+import difflib
 import warnings
 
 import numpy as np
@@ -124,10 +125,7 @@ def padding_trick(xtr, rollouts=None, max_length=None):
             passed.
     """
 
-    from mdp_extras import (
-        DiscreteImplicitExtras,
-        DiscreteExplicitExtras
-    )
+    from mdp_extras import DiscreteImplicitExtras, DiscreteExplicitExtras
 
     # Create the auxiliary state
     s_aux = len(xtr.states)
@@ -162,7 +160,7 @@ def padding_trick(xtr, rollouts=None, max_length=None):
 
     elif isinstance(xtr, DiscreteImplicitExtras):
         # Handle implicit dynamics MDP
-        
+
         # Duplicate the extras as a starting point
         xtr2 = copy.copy(xtr)
 
@@ -201,7 +199,7 @@ def padding_trick(xtr, rollouts=None, max_length=None):
         # Store copies of old objects
         xtr2.t_prob_old = xtr2.t_prob
         xtr2._terminal_state_mask_old = xtr2._terminal_state_mask
-        
+
         # Overwrite properties
         xtr2._states = states
         xtr2._actions = actions
@@ -234,7 +232,9 @@ def padding_trick(xtr, rollouts=None, max_length=None):
             s_aux
         ]
 
-        warnings.warn("Padding a DiscreteImplicitExtras object will *not* update the parents_fixedsize member as this leads to a MemoryError. Please handle this property with caution.")
+        warnings.warn(
+            "Padding a DiscreteImplicitExtras object will *not* update the parents_fixedsize member as this leads to a MemoryError. Please handle this property with caution."
+        )
         # # Update parents_fixedsize array
         # xtr2._parents_fixedsize = csr_matrix()
         # # XXX ajs MemoryError here
@@ -257,12 +257,12 @@ def padding_trick(xtr, rollouts=None, max_length=None):
     # To achive this we simply leave the feature function alone - if a feature of
     # an auxiliary state/action is requested, we will throw a warning (which can be
     # suppressed)
-    
+
     rollouts2 = None
-    
+
     if rollouts is not None:
         # Pad rollouts as well
-        
+
         # Measure the length of the rollouts
         r_len = [len(r) for r in rollouts]
         if max_length is None:
@@ -285,3 +285,33 @@ def padding_trick(xtr, rollouts=None, max_length=None):
             rollouts2.append(rollout2)
 
     return xtr2, rollouts2
+
+
+def nonoverlapping_shared_subsequences(list1, list2):
+    """Find all non-overlapping shared subsequences between two sequences
+    
+    Algorithm is from https://stackoverflow.com/a/32318377/885287
+    NB: This method does not guarantee the sub-sequences will be in any order.
+    
+    This is used in the %-distance-missed metric
+    
+    Args:
+        list1 (sequence): First sequence
+        list2 (sequence): Second sequence
+        
+    Yields:
+        (list): The next sub-sequence that is shared by the list
+    """
+
+    list1 = copy.copy(list1)
+    list2 = copy.copy(list2)
+
+    while True:
+        mbs = difflib.SequenceMatcher(None, list1, list2).get_matching_blocks()
+        if len(mbs) == 1:
+            break
+        for i, j, n in mbs[::-1]:
+            if n > 0:
+                yield list1[i : i + n]
+            del list1[i : i + n]
+            del list2[j : j + n]
