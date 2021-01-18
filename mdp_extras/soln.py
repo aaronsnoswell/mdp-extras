@@ -675,7 +675,9 @@ class Policy(abc.ABC):
                 assert (
                     "state" in env.__dir__()
                 ), "XXX This environment doesn't have a 'state' property - I'm unable to force it into a desired starting state!"
-                s = env.state = start_state
+                env.reset()
+                env.state = start_state
+                s = start_state
 
             for t in it.count():
                 if t == 0 and start_action is not None:
