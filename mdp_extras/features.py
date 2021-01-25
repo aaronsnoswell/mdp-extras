@@ -97,7 +97,7 @@ class FeatureFunction(abc.ABC):
             ), f"Path weights are not correct size, should be {len(rollouts)}, are {len(weights)}"
             if not np.isclose(np.sum(weights), 1.0):
                 warnings.warn(
-                    f"Computing feature exectation with non-normalized weights (sum is {np.sum(weights)}) - did you mean to do this?"
+                    f"Computing feature expectation with non-normalized weights (sum is {np.sum(weights)}) - did you mean to do this?"
                 )
 
         phi_bar = np.zeros(len(self))
