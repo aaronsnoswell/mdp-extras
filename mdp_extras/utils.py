@@ -315,3 +315,21 @@ def nonoverlapping_shared_subsequences(list1, list2):
                 yield list1[i : i + n]
             del list1[i : i + n]
             del list2[j : j + n]
+
+
+def log_sum_exp(x_vals):
+    """Compute ln(\sum_i(\exp(x_i))) Without numerical overflow
+
+    This operation comes up surprisingly often in machine learning!
+
+    Args:
+        x_vals (numpy array): Vector of values that need to be exponentiated, summed, and logged
+            (in that order)
+
+    Returns:
+        (float): The log-sum-exp of x_vals
+    """
+    max_val = np.max(x_vals)
+
+    # Apply log-sum-exp trick
+    return max_val + np.log(np.sum(np.exp(x_vals - max_val)))
