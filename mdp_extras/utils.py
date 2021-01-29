@@ -45,7 +45,7 @@ def trajectory_reward(xtr, phi, reward, rollout):
         reward (mdp_extras.RewardFunction): Reward function
         rollout (list): Trajectory as a list of (s, a) tuples
     """
-    return reward(phi.expectation(rollout, gamma=xtr.gamma))
+    return reward(phi.demo_average([rollout], gamma=xtr.gamma))
 
 
 class DiscreteExplicitLinearEnv:

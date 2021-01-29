@@ -472,7 +472,7 @@ def q_grad_sim(
                 start_state=s,
                 start_action=a,
             )
-            phi_bar = phi.expectation(rollouts, gamma=xtr.gamma)
+            phi_bar = phi.demo_average(rollouts, gamma=xtr.gamma)
             dq_dtheta[s, a, :] = phi_bar
 
     return dq_dtheta
@@ -555,7 +555,7 @@ class Policy(abc.ABC):
         action = np.random.choice(np.arange(self.q.shape[1]), p=self.prob_for_state(s))
         return action, None
 
-    def path_log_likelihood(self, p):
+    def path_log_action_probability(self, p):
         """Compute log-likelihood of [(s, a), ..., (s, None)] path under this policy
         
         N.B. - this does NOT account for the likelihood of starting at state s1 under

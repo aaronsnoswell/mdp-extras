@@ -75,13 +75,45 @@ class FeatureFunction(abc.ABC):
         """
         raise NotImplementedError
 
-    def expectation(self, rollouts, gamma=1.0, weights=None):
+    def onpath(self, rollout, gamma=1.0):
+        """Compute discounted feature vector sum over an entire trajectory
+
+        Args:
+            rollout (list): (s, a) rollout
+
+            gamma (float): Discount factor to use
+
+        Returns:
+            (numpy array): Discounted feature vector over the entire path
+        """
+        phi = np.zeros(len(self))
+        if self.type == self.Type.OBSERVATION:
+            for t, (o1, _) in enumerate(rollout):
+                phi += self(o1) * (gamma ** t)
+        elif self.type == self.Type.OBSERVATION_ACTION:
+            for t, (o1, a) in enumerate(rollout[:-1]):
+                phi += self(o1, a) * (gamma ** t)
+        elif self.type == self.Type.OBSERVATION_ACTION_OBSERVATION:
+            for t, (o1, a) in enumerate(rollout[:-1]):
+                o2 = rollout[t + 1][0]
+                phi += self(o1, a, o2) * (gamma ** t)
+        else:
+            raise ValueError
+
+        return phi
+
+    def demo_average(self, rollouts, gamma=1.0, weights=None):
         """Get empirical discounted feature expectation for a collection of rollouts
         
         Args:
-        
+            rollouts (list): List of (s, a) rollouts to average over
+
+            gamma (float): Discount factor to use
+            weights (numpy array): Optional weights to use for weighted feature vector averaging
+
         Returns:
-        
+            (numpy array): Average discounted feature vector over all paths
+                in the dataset
         """
 
         # Catch case when only a single rollout is passed
@@ -102,19 +134,7 @@ class FeatureFunction(abc.ABC):
 
         phi_bar = np.zeros(len(self))
         for rollout, weight in zip(rollouts, weights):
-
-            if self.type == self.Type.OBSERVATION:
-                for t, (o1, _) in enumerate(rollout):
-                    phi_bar += weight * self(o1) * (gamma ** t)
-            elif self.type == self.Type.OBSERVATION_ACTION:
-                for t, (o1, a) in enumerate(rollout[:-1]):
-                    phi_bar += weight * self(o1, a) * (gamma ** t)
-            elif self.type == self.Type.OBSERVATION_ACTION_OBSERVATION:
-                for t, (o1, a) in enumerate(rollout[:-1]):
-                    o2 = rollout[t + 1][0]
-                    phi_bar += weight * self(o1, a, o2) * (gamma ** t)
-            else:
-                raise ValueError
+            phi_bar += weight * self.onpath(rollout, gamma)
 
         # Apply normalization
         phi_bar /= np.sum(weights)
@@ -135,8 +155,8 @@ class FeatureFunction(abc.ABC):
         Returns:
             (float): Feature distance, same units as the feature function
         """
-        phi_bar_1 = self.expectation([demo_1], gamma=gamma)
-        phi_bar_2 = self.expectation([demo_2], gamma=gamma)
+        phi_bar_1 = self.onpath(demo_1, gamma=gamma)
+        phi_bar_2 = self.onpath(demo_2, gamma=gamma)
         return np.linalg.norm(phi_bar_1 - phi_bar_2)
 
 
