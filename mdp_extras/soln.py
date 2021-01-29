@@ -694,6 +694,20 @@ class Policy(abc.ABC):
         return rollouts
 
 
+class UniformRandomPolicy(Policy):
+    """A Uniform Random policy"""
+
+    def __init__(self, num_actions):
+        """"""
+        self.num_actions = num_actions
+
+    def predict(self, s):
+        return np.random.randint(0, self.num_actions), None
+
+    def log_prob_for_state(self, s):
+        return np.log(np.ones(self.num_actions) / self.num_actions)
+
+
 class EpsilonGreedyPolicy(Policy):
     """An Epsilon Greedy Policy wrt. a provided Q function
     """
