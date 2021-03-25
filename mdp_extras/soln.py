@@ -17,17 +17,17 @@ from mdp_extras.utils import DiscreteExplicitLinearEnv, PaddedMDPWarning
 
 def q_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
     """Value iteration to find the optimal state-action value function
-    
+
     Args:
         xtr (DiscreteExplicitExtras):
         phi (FeatureFunction): Feature function
         reward (RewardFunction): Reward function
-        
+
         eps (float): Value convergence tolerance
         verbose (bool): Extra logging
         max_iter (int): If provided, iteration will terminate regardless of convergence
             after this many iterations.
-    
+
     Returns:
         (numpy array): |S|x|A| matrix of state-action values
     """
@@ -37,19 +37,19 @@ def q_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
         t_mat, gamma, rs, rsa, rsas, eps=1e-6, verbose=False, max_iter=None
     ):
         """Value iteration to find the optimal state-action value function
-        
+
         Args:
             t_mat (numpy array): |S|x|A|x|S| transition matrix
             gamma (float): Discount factor
             rs (numpy array): |S| State reward vector
             rsa (numpy array): |S|x|A| State-action reward vector
             rsas (numpy array): |S|x|A|x|S| State-action-state reward vector
-            
+
             eps (float): Value convergence tolerance
             verbose (bool): Extra logging
             max_iter (int): If provided, iteration will terminate regardless of convergence
                 after this many iterations.
-        
+
         Returns:
             (numpy array): |S|x|A| matrix of state-action values
         """
@@ -97,10 +97,10 @@ def q_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
 
 def q2v(q_star):
     """Convert optimal state-action value function to optimal state value function
-    
+
     Args:
         q_star (numpy array): |S|x|A| Optimal state-action value function array
-    
+
     Returns:
         (numpy array): |S| Optimal state value function vector
     """
@@ -109,17 +109,17 @@ def q2v(q_star):
 
 def v_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
     """Value iteration to find the optimal state value function
-    
+
     Args:
         xtr (DiscreteExplicitExtras): Extras object
         phi (FeatureFunction): Feature function
         reward (RewardFunction): Reward function
-        
+
         eps (float): Value convergence tolerance
         verbose (bool): Extra logging
         max_iter (int): If provided, iteration will terminate regardless of convergence
             after this many iterations.
-    
+
     Returns:
         (numpy array): |S|x|A| matrix of state-action values
     """
@@ -129,19 +129,19 @@ def v_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
         t_mat, gamma, rs, rsa, rsas, eps=1e-6, verbose=False, max_iter=None
     ):
         """Value iteration to find the optimal value function
-        
+
         Args:
             t_mat (numpy array): |S|x|A|x|S| transition matrix
             gamma (float): Discount factor
             rs (numpy array): |S| State reward vector
             rsa (numpy array): |S|x|A| State-action reward vector
             rsas (numpy array): |S|x|A|x|S| State-action-state reward vector
-            
+
             eps (float): Value convergence tolerance
             verbose (bool): Extra logging
             max_iter (int): If provided, iteration will terminate regardless of convergence
                 after this many iterations.
-        
+
         Returns:
             (numpy array): |S| vector of state values
         """
@@ -186,13 +186,13 @@ def v_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
 
 def v2q(v_star, xtr, phi, reward):
     """Convert optimal state value function to optimal state-action value function
-    
+
     Args:
         v_star (numpy array): |S| Optimal state value function vector
         xtr (DiscreteExplicitExtras):
         phi (FeatureFunction): Feature function
         reward (RewardFunction): Reward function
-    
+
     Returns:
         (numpy array): |S|x|A| Optimal state-action value function array
     """
@@ -207,7 +207,7 @@ def v2q(v_star, xtr, phi, reward):
         state_action_state_rewards,
     ):
         """Find Q* given V* (numba optimized version)
-        
+
         Args:
             v_star (numpy array): |S| vector of optimal state values
             t_mat (numpy array): |S|x|A|x|S| transition matrix
@@ -215,7 +215,7 @@ def v2q(v_star, xtr, phi, reward):
             state_rewards (numpy array): |S| array of state rewards
             state_action_rewards (numpy array): |S|x|A| array of state-action rewards
             state_action_state_rewards (numpy array): |S|x|A|x|S| array of state-action-state rewards
-        
+
         Returns:
             (numpy array): |S|x|A| array of optimal state-action values
         """
@@ -240,30 +240,36 @@ def v2q(v_star, xtr, phi, reward):
 
 def pi_eval(xtr, phi, reward, policy, eps=1e-6, num_runs=1):
     """Determine the value function of a given policy
-    
+
     Args:
         xtr (DiscreteExplicitExtras): Extras object
         phi (FeatureFunction): Feature function
         reward (RewardFunction): Reward function
         policy (object): Policy object providing a .predict(s) method to match the
             stable-baselines policy API
-        
+
         eps (float): State value convergence threshold
         num_runs (int): Number of policy evaluations to average over - for deterministic
             policies, leave this as 1, but for stochastic policies, set to a large
             number (the function will then sample actions stochastically from the
             policy).
-    
+
     Returns:
         (numpy array): |S| state value vector
     """
 
     @jit(nopython=True)
     def _nb_policy_evaluation(
-        t_mat, gamma, rs, rsa, rsas, policy_vector, eps=1e-6,
+        t_mat,
+        gamma,
+        rs,
+        rsa,
+        rsas,
+        policy_vector,
+        eps=1e-6,
     ):
         """Determine the value function of a given deterministic policy
-        
+
         Args:
             t_mat (numpy array): |S|x|A|x|S| transition matrix
             gamma (float): Discount factor
@@ -272,9 +278,9 @@ def pi_eval(xtr, phi, reward, policy, eps=1e-6, num_runs=1):
             rsas (numpy array): |S|x|A|x|S| State-action-state reward vector
             policy_vector (numpy array): |S| vector indicating action to take from each
                 state
-            
+
             eps (float): State value convergence threshold
-        
+
         Returns:
             (numpy array): |S| state value vector
         """
@@ -323,24 +329,24 @@ def pi_eval(xtr, phi, reward, policy, eps=1e-6, num_runs=1):
 
 def q_grad_fpi(theta, xtr, phi, tol=1e-3):
     """Estimate the Q-gradient with a Fixed Point Iteration
-        
+
     TODO ajs 07/dec/2020 Handle state-action-state feature functions?
-    
+
     This method uses a Fixed-Point estimate by Neu and Szepesvari 2007, and is
     considered by me to be the 'gold standard' for Q-gradient estimation.
-    
+
     See "Apprenticeship learning using inverse reinforcement learning and gradient
     methods." by Neu and Szepesvari in UAI, 2007.
-    
+
     This method requires |S|x|S|x|A|x|A| updates per iteration, and empirically appears
     to have exponential convergence in the number of iterations. That is,
     δ α O(exp(-1.0 x iteration)).
-    
+
     Args:
         theta (numpy array): Current reward parameters
         xtr (mdp_extras.DiscreteExplicitExtras): MDP definition
         phi (mdp_extras.FeatureFunction): A state-action feature function
-    
+
     Returns:
         (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
     """
@@ -360,9 +366,9 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
     @jit(nopython=True)
     def _nb_fpi(states, actions, t_mat, gamma, phi, pi_star, tol):
         """Plain-object core loop for numba optimization
-        
+
         TODO ajs 07/dec/2020 Handle state-action-state feature functions?
-        
+
         Args:
             states (list): States
             actions (list): Actions
@@ -371,7 +377,7 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
             phi (numpy array): |S|x|A|x|φ| state-action feature matrix
             pi_star (numpy array): |S|x|A| policy matrix
             tol (float): Convergence threshold
-        
+
         Returns:
             |S|x|A|x|φ| Estimate of gradient of Q function
         """
@@ -420,30 +426,34 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
 
 
 def q_grad_sim(
-    theta, xtr, phi, max_rollout_length, rollouts_per_sa=100,
+    theta,
+    xtr,
+    phi,
+    max_rollout_length,
+    rollouts_per_sa=100,
 ):
     """Estimate the Q-gradient with simulation
-    
+
     This method samples many rollouts from the optimal stationary stochastic policy for
     every possible (s, a) pair. This can give arbitrarily bad gradient estimates
     when used with non-episodic MDPs due to the early truncation of rollouts.
     This method also gives arbitrarily bad gradient estimates for terminal states in
     episodic MDPs, unless the max rollout length is set sufficiently high.
-    
+
     This method requires sampling |S|x|A|x(rollouts_per_sa) rollouts from the MDP,
     and is by far the slowest of the Q-gradient estimators.
-    
+
     Args:
         theta (numpy array): Current reward parameters
         xtr (mdp_extras.DiscreteExplicitExtras): MDP definition
         phi (mdp_extras.FeatureFunction): A state-action feature function
         max_rollout_length (int): Maximum rollout length - this value is rather
             arbitrary, but must be set to a large value to give accurate estimates.
-        
+
         rollouts_per_sa (int): Number of rollouts to sample for each (s, a) pair. If
             the environment has deterministic dynamics, it's OK to set this to a small
             number (i.e. 1).
-    
+
     Returns:
         (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
     """
@@ -480,16 +490,16 @@ def q_grad_sim(
 
 def q_grad_nd(theta, xtr, phi, dtheta=0.01):
     """Estimate the Q-gradient with 2-point numerical differencing
-    
+
     This method requires solving for 2x|φ| Q* functions
-    
+
     Args:
         theta (numpy array): Current reward parameters
         xtr (mdp_extras.DiscreteExplicitExtras): MDP definition
         phi (mdp_extras.FeatureFunction): A state-action feature function
-        
+
         dtheta (float): Amount to increment reward parameters by
-    
+
     Returns:
         (numpy array): |S|x|A|x|φ| Array of partial derivatives δQ(s, a)/dθ
     """
@@ -518,7 +528,7 @@ def q_grad_nd(theta, xtr, phi, dtheta=0.01):
 
 class Policy(abc.ABC):
     """A simple Policy base class
-    
+
     Provides a .predict(s) method to match the stable-baselines policy API
     """
 
@@ -540,12 +550,12 @@ class Policy(abc.ABC):
 
     def predict(self, s):
         """Predict next action and distribution over states
-        
+
         N.b. This function matches the API of the stabe-baselines policies.
-        
+
         Args:
             s (int): Current state
-        
+
         Returns:
             (int): Sampled action
             (None): Placeholder to ensure this function matches the stable-baselines
@@ -557,13 +567,13 @@ class Policy(abc.ABC):
 
     def path_log_action_probability(self, p):
         """Compute log-likelihood of [(s, a), ..., (s, None)] path under this policy
-        
+
         N.B. - this does NOT account for the likelihood of starting at state s1 under
             the MDP dynamics, or the MDP dynamics themselves
-        
+
         Args:
             p (list): List of state-action tuples
-        
+
         Returns:
             (float): Absolute log-likelihood of the path under this policy
         """
@@ -572,6 +582,7 @@ class Policy(abc.ABC):
         ll = np.log(1.0)
 
         # N.b. - final tuple is (s, None), which we skip
+        # p = [(s, a), (s, a), ..., (s, None)]
         for s, a in p[:-1]:
             log_action_prob = self.log_prob_for_state_action(s, a)
             if np.isneginf(log_action_prob):
@@ -583,10 +594,10 @@ class Policy(abc.ABC):
 
     def log_prob_for_state(self, s):
         """Get the action log probability vector for the given state
-        
+
         Args:
             s (int): Current state
-        
+
         Returns:
             (numpy array): Log probability distribution over actions
         """
@@ -594,10 +605,10 @@ class Policy(abc.ABC):
 
     def prob_for_state(self, s):
         """Get the action probability vector for the given state
-        
+
         Args:
             s (int): Current state
-        
+
         Returns:
             (numpy array): Probability distribution over actions
         """
@@ -605,11 +616,11 @@ class Policy(abc.ABC):
 
     def prob_for_state_action(self, s, a):
         """Get the probability for the given state, action
-        
+
         Args:
             s (int): Current state
             a (int): Chosen action
-        
+
         Returns:
             (float): Probability of choosing a from s
         """
@@ -625,11 +636,11 @@ class Policy(abc.ABC):
 
     def log_prob_for_state_action(self, s, a):
         """Get the log probability for the given state, action
-        
+
         Args:
             s (int): Current state
             a (int): Chosen action
-        
+
         Returns:
             (float): Log probability of choosing a from s
         """
@@ -647,18 +658,18 @@ class Policy(abc.ABC):
         self, env, num, max_path_length=None, start_state=None, start_action=None
     ):
         """Sample state-action rollouts from this policy in the provided environment
-        
+
         Args:
             env (gym.Env): Environment
             num (int): Number of rollouts to sample
-            
+
             max_path_length (int): Optional maximum path length - episodes will be
                 prematurely terminated after this many time steps
             start_state (any): Optional starting state for the policy - Warning: this
                 functionality isn't actually supported by the OpenAI Gym class, we just
                 hope that the 'env' definition has a writeable '.state' parameter
             start_action (any): Optional starting action for the policy
-        
+
         Returns:
             (list): List of state-action rollouts
         """
@@ -691,6 +702,7 @@ class Policy(abc.ABC):
                     break
             rollout.append((s, None))
             rollouts.append(rollout)
+
         return rollouts
 
 
@@ -709,12 +721,11 @@ class UniformRandomPolicy(Policy):
 
 
 class EpsilonGreedyPolicy(Policy):
-    """An Epsilon Greedy Policy wrt. a provided Q function
-    """
+    """An Epsilon Greedy Policy wrt. a provided Q function"""
 
     def __init__(self, q, epsilon=0.1):
         """C-tor
-        
+
         Args:
             q (numpy array): |S|x|A| Q-matrix
             epsilon (float): Probability of taking a random action. Set to 0 to create
@@ -732,10 +743,10 @@ class EpsilonGreedyPolicy(Policy):
 
     def prob_for_state(self, s):
         """Get the action probability vector for the given state
-        
+
         Args:
             s (int): Current state
-        
+
         Returns:
             (numpy array): Probability distribution over actions, respecting the
                 self.stochastic and self.epsilon parameters
@@ -768,10 +779,10 @@ class EpsilonGreedyPolicy(Policy):
 
     def log_prob_for_state(self, s):
         """Get the action log probability vector for the given state
-        
+
         Args:
             s (int): Current state
-        
+
         Returns:
             (numpy array): Log probability distribution over actions
         """
@@ -783,10 +794,10 @@ class OptimalPolicy(EpsilonGreedyPolicy):
 
     def __init__(self, q, stochastic=True, q_precision=None):
         """C-tor
-        
+
         Args:
             q (numpy array): |S|x|A| Q-matrix
-            
+
             stochastic (bool): If true, this policy will sample amongst optimal actions.
                 Otherwise, the first optimal action will always be chosen.
             q_precision (int): Precision level in digits of the q-function. If a
@@ -834,10 +845,10 @@ class OptimalPolicy(EpsilonGreedyPolicy):
 
     def log_prob_for_state(self, s):
         """Get the action log probability vector for the given state
-        
+
         Args:
             s (int): Current state
-        
+
         Returns:
             (numpy array): Log probability distribution over actions
         """
@@ -845,12 +856,11 @@ class OptimalPolicy(EpsilonGreedyPolicy):
 
 
 class BoltzmannExplorationPolicy(Policy):
-    """A Boltzmann exploration policy wrt. a provided Q function
-    """
+    """A Boltzmann exploration policy wrt. a provided Q function"""
 
     def __init__(self, q, scale=1.0):
         """C-tor
-        
+
         Args:
             q (numpy array): |S|x|A| Q-matrix
             scale (float): Temperature scaling factor on the range [0, inf).
@@ -867,10 +877,10 @@ class BoltzmannExplorationPolicy(Policy):
 
     def prob_for_state(self, s):
         """Get the action probability vector for the given state
-        
+
         Args:
             s (int): Current state
-        
+
         Returns:
             (numpy array): Probability distribution over actions, respecting the
                 self.stochastic and self.epsilon parameters
