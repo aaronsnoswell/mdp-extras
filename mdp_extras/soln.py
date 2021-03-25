@@ -690,16 +690,28 @@ class Policy(abc.ABC):
                 env.state = start_state
                 s = start_state
 
-            for t in it.count():
-                if t == 0 and start_action is not None:
-                    a = start_action
-                else:
-                    a, _ = self.predict(s)
-                s2, r, done, info = env.step(a)
-                rollout.append((s, a))
-                s = s2
-                if done or (max_path_length is not None and t == max_path_length - 2):
-                    break
+            if max_path_length is None or max_path_length > 1:
+                for t in it.count():
+                    if t == 0 and start_action is not None:
+                        a = start_action
+                    else:
+                        a, _ = self.predict(s)
+                    s2, r, done, info = env.step(a)
+                    rollout.append((s, a))
+                    s = s2
+
+                    path_length = t + 1
+                    if done:
+                        break
+                    if (
+                        max_path_length is not None
+                        and path_length == max_path_length - 1
+                    ):
+                        break
+            else:
+                # Edge case - max path length == 1
+                pass
+
             rollout.append((s, None))
             rollouts.append(rollout)
 
