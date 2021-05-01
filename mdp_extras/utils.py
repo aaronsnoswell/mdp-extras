@@ -15,11 +15,11 @@ class PaddedMDPWarning(UserWarning):
 
 def compute_parents_children(t_mat, terminal_state_mask):
     """Compute parent and child dictionaries
-    
+
     Args:
         t_mat (numpy array): |S|x|A|x|S| array of transition dynamics
         terminal_state_mask (numpy array): |S| vector indicating terminal states
-    
+
     Returns:
         (dict): Dictionary mapping states to (s, a) parent tuples
         (dict): Dictionary mapping states to (a, s') child tuples
@@ -37,7 +37,7 @@ def compute_parents_children(t_mat, terminal_state_mask):
 
 def trajectory_reward(xtr, phi, reward, rollout):
     """Get discounted reward of a trajectory
-    
+
     Args:
         xtr (mdp_extras.DiscreteExplicitExtras): MDP extras
         phi (mdp_extras.FeatureFunction): Feature function to use with linear reward
@@ -53,7 +53,7 @@ class DiscreteExplicitLinearEnv:
 
     def __init__(self, xtr, phi, reward):
         """C-tor
-        
+
         Args:
             xtr (DiscreteExplicitExtras): Extras object for this MDP
             phi (FeatureFunction): Feature function for this MDP
@@ -71,7 +71,7 @@ class DiscreteExplicitLinearEnv:
 
     def reset(self):
         """Reset the MDP, getting a new state
-        
+
         Returns:
             (int): New state sampled from starting state distribution
         """
@@ -82,10 +82,10 @@ class DiscreteExplicitLinearEnv:
 
     def step(self, a):
         """Take an action in the MDP
-        
+
         Args:
             a (int): Action to take
-        
+
         Returns:
             (int): New state
             (float): Reward for taking action a from previous state
@@ -106,19 +106,19 @@ class DiscreteExplicitLinearEnv:
 
 def padding_trick(xtr, rollouts=None, max_length=None):
     """Apply padding trick, adding an auxiliary state and action to an MDP
-    
+
     We gain a O(|S|) space and time efficiency improvement with our MaxEnt IRL algorithm
     for MDPs with terminal states by transforming them to have no terminal states. This
     is done by adding a dummy state and action that pad any trajectories out to a fixed
     upper length.
-    
+
     Args:
         xtr (DiscreteExplicitExtras): Extras object
-        
+
         rollouts (list): List of [(s, a), (s, a), ..., (s, None)] rollouts to pad
         max_length (int): Optional maximum length to pad to, otherwise paths are padded
             to match the length of the longest path
-        
+
     Returns:
         (DiscreteExplicitExtras): Extras object, padded with auxiliary state and action
         (list): List of rollouts, padded to max_length, or None if rollouts was not
@@ -289,16 +289,16 @@ def padding_trick(xtr, rollouts=None, max_length=None):
 
 def nonoverlapping_shared_subsequences(list1, list2):
     """Find all non-overlapping shared subsequences between two sequences
-    
+
     Algorithm is from https://stackoverflow.com/a/32318377/885287
     NB: This method does not guarantee the sub-sequences will be in any order.
-    
+
     This is used in the %-distance-missed metric
-    
+
     Args:
         list1 (sequence): First sequence
         list2 (sequence): Second sequence
-        
+
     Yields:
         (list): The next sub-sequence that is shared by the list
     """
@@ -333,3 +333,55 @@ def log_sum_exp(x_vals):
 
     # Apply log-sum-exp trick
     return max_val + np.log(np.sum(np.exp(x_vals - max_val)))
+
+
+def softmax(x, t=1.0):
+    """Numerically stable soft maximum of a vector.
+
+    This is computed by considering the vector elements pairwise, and exploiting the fact that
+
+    log(exp(a) + exp(b) + exp(c)) = log(exp(log(exp(a) + exp(b)) + exp(c))
+
+    Args:
+        x (numpy array): Vector of values to take soft maximum of
+
+        t (float): Temperature parameter > 0. As t -> 0, this resembles a regular max.
+
+    Returns:
+        (numpy array): Soft-maximum of the elements of x, or t * log(\sum_i exp(x_i/t))
+    """
+
+    x = np.array(x)
+    if x.shape == ():
+        # Handle edge-case of a single scalar
+        return x
+
+    # Compute sm of each arg one by one
+    val = x[0]
+    for x_i in x[1:]:
+        max_val = max(val, x_i)
+        min_val = min(val, x_i)
+        delta = min_val - max_val
+        # Numerically stable softmax of two arguments
+        val = max_val + t * np.log(1 + np.exp(delta / t))
+    return val
+
+
+def mellowmax(x, t=1.0):
+    """Numerically stable mellow maximum of a vector
+
+    Unlike softmax, mellowmax is a contraction mapping, which means it has a unique fixed point.
+
+    Args:
+        x (numpy array): Vector of values to take mellow maximum of
+
+        t (float): Temperature parameter. As t -> 0, this resembles a regular max.
+
+    Returns:
+        (numpy array): Mellow-maximum of the elements of x, or t * log(1/n \sum_i^n exp(x_i/t))
+    """
+    x = np.array(x)
+    if x.shape == ():
+        # Handle edge-case of a single scalar
+        return x
+    return softmax(x, t) - t * np.log(len(x))

@@ -12,103 +12,31 @@ from numba import jit
 
 from mdp_extras.features import FeatureFunction
 from mdp_extras.rewards import Linear
-from mdp_extras.utils import DiscreteExplicitLinearEnv, PaddedMDPWarning
+from mdp_extras.utils import (
+    DiscreteExplicitLinearEnv,
+    PaddedMDPWarning,
+    softmax,
+    mellowmax,
+)
 
 
-def q_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
-    """Value iteration to find the optimal state-action value function
+def vi(
+    xtr,
+    phi,
+    reward,
+    eps=1e-6,
+    verbose=False,
+    max_iter=None,
+    type="rational",
+    temperature=1.0,
+):
+    """Value iteration for the optimal state and state-action value function
 
-    Args:
-        xtr (DiscreteExplicitExtras):
-        phi (FeatureFunction): Feature function
-        reward (RewardFunction): Reward function
-
-        eps (float): Value convergence tolerance
-        verbose (bool): Extra logging
-        max_iter (int): If provided, iteration will terminate regardless of convergence
-            after this many iterations.
-
-    Returns:
-        (numpy array): |S|x|A| matrix of state-action values
-    """
-
-    @jit(nopython=True)
-    def _nb_q_value_iteration(
-        t_mat, gamma, rs, rsa, rsas, eps=1e-6, verbose=False, max_iter=None
-    ):
-        """Value iteration to find the optimal state-action value function
-
-        Args:
-            t_mat (numpy array): |S|x|A|x|S| transition matrix
-            gamma (float): Discount factor
-            rs (numpy array): |S| State reward vector
-            rsa (numpy array): |S|x|A| State-action reward vector
-            rsas (numpy array): |S|x|A|x|S| State-action-state reward vector
-
-            eps (float): Value convergence tolerance
-            verbose (bool): Extra logging
-            max_iter (int): If provided, iteration will terminate regardless of convergence
-                after this many iterations.
-
-        Returns:
-            (numpy array): |S|x|A| matrix of state-action values
-        """
-
-        q_value_fn = np.zeros((t_mat.shape[0], t_mat.shape[1]))
-
-        _iter = 0
-        while True:
-            delta = 0
-            for s1 in range(t_mat.shape[0]):
-                for a in range(t_mat.shape[1]):
-                    q = q_value_fn[s1, a]
-                    state_values = np.zeros(t_mat.shape[0])
-                    for s2 in range(t_mat.shape[2]):
-                        state_values[s2] += t_mat[s1, a, s2] * (
-                            rs[s1]
-                            + rsa[s1, a]
-                            + rsas[s1, a, s2]
-                            + gamma * np.max(q_value_fn[s2, :])
-                        )
-                    q_value_fn[s1, a] = np.sum(state_values)
-                    delta = max(delta, np.abs(q - q_value_fn[s1, a]))
-
-            if max_iter is not None and _iter >= max_iter:
-                if verbose:
-                    print("Terminating before convergence, # iterations = ", _iter)
-                    break
-
-            # Check value function convergence
-            if delta < eps:
-                break
-            else:
-                if verbose:
-                    print("Value Iteration #", _iter, " delta=", delta)
-
-            _iter += 1
-
-        return q_value_fn
-
-    xtr = xtr.as_unpadded
-    return _nb_q_value_iteration(
-        xtr.t_mat, xtr.gamma, *reward.structured(xtr, phi), eps, verbose, max_iter
-    )
-
-
-def q2v(q_star):
-    """Convert optimal state-action value function to optimal state value function
-
-    Args:
-        q_star (numpy array): |S|x|A| Optimal state-action value function array
-
-    Returns:
-        (numpy array): |S| Optimal state value function vector
-    """
-    return np.max(q_star, axis=1)
-
-
-def v_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
-    """Value iteration to find the optimal state value function
+        In our definition of terminal states, the agent receives a state reward upon reaching a terminal state,
+        and *then* the episode ends. For this reason, the state-value of a terminal state is equal to the reward of that
+        state, not 0 (as in Sutton and Barto). Likewise, the state-action value of a terminal state is equal to the
+        reward of that state, and does not include the reward for executing an action in that state (because the agent
+        doesn't get to execute an action in that state).
 
     Args:
         xtr (DiscreteExplicitExtras): Extras object
@@ -119,19 +47,37 @@ def v_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
         verbose (bool): Extra logging
         max_iter (int): If provided, iteration will terminate regardless of convergence
             after this many iterations.
+        type (str): Type of value functions to calculate. Options include
+            'rational' - Regular VI - take max over future actions
+            'soft' - Soft VI - take softmax over future actions
+            'mellow' - Mellow VI - take mellowmax over future actions
+        temperature (float): Temperature parameter, only used for soft or mellomax. As temp -> 0, these
+            VI algorithms approach rational VI.
 
     Returns:
+        (numpy array): |S| array of state values
         (numpy array): |S|x|A| matrix of state-action values
     """
 
+    assert type in ("rational", "soft", "mellow"), f"Unknown type parameter {type}"
+
     @jit(nopython=True)
-    def _nb_value_iteration(
-        t_mat, gamma, rs, rsa, rsas, eps=1e-6, verbose=False, max_iter=None
+    def nb_vi_rational(
+        t_mat,
+        terminal_states,
+        gamma,
+        rs,
+        rsa,
+        rsas,
+        eps=1e-6,
+        verbose=False,
+        max_iter=None,
     ):
-        """Value iteration to find the optimal value function
+        """Value iteration to find the optimal rational value function
 
         Args:
             t_mat (numpy array): |S|x|A|x|S| transition matrix
+            terminal_states (numpy array): |S| boolean array of terminal state indicators
             gamma (float): Discount factor
             rs (numpy array): |S| State reward vector
             rsa (numpy array): |S|x|A| State-action reward vector
@@ -143,24 +89,33 @@ def v_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
                 after this many iterations.
 
         Returns:
-            (numpy array): |S| vector of state values
+            (numpy array): |S| vector of optimal rational state values
+            (numpy array): |S|x|A| matrix of optimal rational state-action values
         """
 
-        value_fn = np.zeros(t_mat.shape[0])
+        s_value = np.zeros(t_mat.shape[0])
+        sa_value = np.zeros((t_mat.shape[0], t_mat.shape[1]))
+        for s1 in range(t_mat.shape[0]):
+            if terminal_states[s1]:
+                s_value[s1] = rs[s1]
+                sa_value[s1, :] = rs[s1]
 
         _iter = 0
         while True:
             delta = 0
             for s1 in range(t_mat.shape[0]):
-                v = value_fn[s1]
-                action_values = np.zeros(t_mat.shape[1])
+                if terminal_states[s1]:
+                    # Don't update terminal states
+                    continue
+                v = s_value[s1]
+                sa_value[s1, :] = np.zeros(t_mat.shape[1])
                 for a in range(t_mat.shape[1]):
                     for s2 in range(t_mat.shape[2]):
-                        action_values[a] += t_mat[s1, a, s2] * (
-                            rsa[s1, a] + rsas[s1, a, s2] + rs[s2] + gamma * value_fn[s2]
+                        sa_value[s1, a] += t_mat[s1, a, s2] * (
+                            rs[s1] + rsa[s1, a] + rsas[s1, a, s2] + gamma * s_value[s2]
                         )
-                value_fn[s1] = np.max(action_values)
-                delta = max(delta, np.abs(v - value_fn[s1]))
+                s_value[s1] = np.max(sa_value[s1, :])
+                delta = max(delta, np.abs(v - s_value[s1]))
 
             if max_iter is not None and _iter >= max_iter:
                 if verbose:
@@ -176,12 +131,203 @@ def v_vi(xtr, phi, reward, eps=1e-6, verbose=False, max_iter=None):
 
             _iter += 1
 
-        return value_fn
+        return s_value, sa_value
+
+    @jit(nopython=True)
+    def nb_vi_soft(
+        t_mat,
+        terminal_states,
+        gamma,
+        rs,
+        rsa,
+        rsas,
+        temperature,
+        eps=1e-6,
+        verbose=False,
+        max_iter=None,
+    ):
+        """Value iteration to find the soft optimal value functions
+
+        Args:
+            t_mat (numpy array): |S|x|A|x|S| transition matrix
+            terminal_states (numpy array): |S| boolean array of terminal state indicators
+            gamma (float): Discount factor
+            rs (numpy array): |S| State reward vector
+            rsa (numpy array): |S|x|A| State-action reward vector
+            rsas (numpy array): |S|x|A|x|S| State-action-state reward vector
+            temperature (float): Temperature for softmax
+
+            eps (float): Value convergence tolerance
+            verbose (bool): Extra logging
+            max_iter (int): If provided, iteration will terminate regardless of convergence
+                after this many iterations.
+
+        Returns:
+            (numpy array): |S| vector of optimal soft state values
+            (numpy array): |S|x|A| matrix of optimal soft state-action values
+        """
+
+        s_value = np.zeros(t_mat.shape[0])
+        sa_value = np.zeros((t_mat.shape[0], t_mat.shape[1]))
+        for s1 in range(t_mat.shape[0]):
+            if terminal_states[s1]:
+                s_value[s1] = rs[s1]
+                sa_value[s1, :] = rs[s1]
+
+        _iter = 0
+        while True:
+            delta = 0
+            for s1 in range(t_mat.shape[0]):
+                if terminal_states[s1]:
+                    # Don't update terminal states
+                    continue
+                v = s_value[s1]
+                sa_value[s1, :] = np.zeros(t_mat.shape[1])
+                for a in range(t_mat.shape[1]):
+                    for s2 in range(t_mat.shape[2]):
+                        sa_value[s1, a] += t_mat[s1, a, s2] * (
+                            rs[s1] + rsa[s1, a] + rsas[s1, a, s2] + gamma * s_value[s2]
+                        )
+                s_value[s1] = softmax(sa_value[s1, :], temperature)
+                delta = max(delta, np.abs(v - s_value[s1]))
+
+            if max_iter is not None and _iter >= max_iter:
+                if verbose:
+                    print("Terminating before convergence, # iterations = ", _iter)
+                    break
+
+            # Check value function convergence
+            if delta < eps:
+                break
+            else:
+                if verbose:
+                    print("Value Iteration #", _iter, " delta=", delta)
+
+            _iter += 1
+
+        return s_value, sa_value
+
+    @jit(nopython=True)
+    def nb_vi_mellow(
+        t_mat,
+        terminal_states,
+        gamma,
+        rs,
+        rsa,
+        rsas,
+        temperature,
+        eps=1e-6,
+        verbose=False,
+        max_iter=None,
+    ):
+        """Value iteration to find the mellow optimal value functions
+
+        Args:
+            t_mat (numpy array): |S|x|A|x|S| transition matrix
+            terminal_states (numpy array): |S| boolean array of terminal state indicators
+            gamma (float): Discount factor
+            rs (numpy array): |S| State reward vector
+            rsa (numpy array): |S|x|A| State-action reward vector
+            rsas (numpy array): |S|x|A|x|S| State-action-state reward vector
+            temperature (float): Temperature for mellowmax
+
+            eps (float): Value convergence tolerance
+            verbose (bool): Extra logging
+            max_iter (int): If provided, iteration will terminate regardless of convergence
+                after this many iterations.
+
+        Returns:
+            (numpy array): |S| vector of optimal mellow state values
+            (numpy array): |S|x|A| matrix of optimal mellow state-action values
+        """
+
+        s_value = np.zeros(t_mat.shape[0])
+        sa_value = np.zeros((t_mat.shape[0], t_mat.shape[1]))
+        for s1 in range(t_mat.shape[0]):
+            if terminal_states[s1]:
+                s_value[s1] = rs[s1]
+                sa_value[s1, :] = rs[s1]
+
+        _iter = 0
+        while True:
+            delta = 0
+            for s1 in range(t_mat.shape[0]):
+                if terminal_states[s1]:
+                    # Don't update terminal states
+                    continue
+                v = s_value[s1]
+                sa_value[s1, :] = np.zeros(t_mat.shape[1])
+                for a in range(t_mat.shape[1]):
+                    for s2 in range(t_mat.shape[2]):
+                        sa_value[s1, a] += t_mat[s1, a, s2] * (
+                            rs[s1] + rsa[s1, a] + rsas[s1, a, s2] + gamma * s_value[s2]
+                        )
+                s_value[s1] = mellowmax(sa_value[s1, :], temperature)
+                delta = max(delta, np.abs(v - s_value[s1]))
+
+            if max_iter is not None and _iter >= max_iter:
+                if verbose:
+                    print("Terminating before convergence, # iterations = ", _iter)
+                    break
+
+            # Check value function convergence
+            if delta < eps:
+                break
+            else:
+                if verbose:
+                    print("Value Iteration #", _iter, " delta=", delta)
+
+            _iter += 1
+
+        return s_value, sa_value
 
     xtr = xtr.as_unpadded
-    return _nb_value_iteration(
-        xtr.t_mat, xtr.gamma, *reward.structured(xtr, phi), eps, verbose, max_iter
-    )
+    if type == "rational":
+        return nb_vi_rational(
+            xtr.t_mat,
+            np.array(xtr.terminal_state_mask),
+            xtr.gamma,
+            *reward.structured(xtr, phi),
+            eps,
+            verbose,
+            max_iter,
+        )
+    elif type == "soft":
+        return nb_vi_soft(
+            xtr.t_mat,
+            np.array(xtr.terminal_state_mask),
+            xtr.gamma,
+            *reward.structured(xtr, phi),
+            eps,
+            verbose,
+            max_iter,
+            temperature,
+        )
+    elif type == "mellow":
+        return nb_vi_mellow(
+            xtr.t_mat,
+            np.array(xtr.terminal_state_mask),
+            xtr.gamma,
+            *reward.structured(xtr, phi),
+            eps,
+            verbose,
+            max_iter,
+            temperature,
+        )
+    else:
+        raise ValueError(f"Unknown type parameter {type}")
+
+
+def q2v(q_star):
+    """Convert optimal rational state-action value function to optimal state value function
+
+    Args:
+        q_star (numpy array): |S|x|A| Optimal state-action value function array
+
+    Returns:
+        (numpy array): |S| Optimal state value function vector
+    """
+    return np.max(q_star, axis=1)
 
 
 def v2q(v_star, xtr, phi, reward):
@@ -200,6 +346,7 @@ def v2q(v_star, xtr, phi, reward):
     @jit(nopython=True)
     def _nb_q_from_v(
         v_star,
+        terminal_states,
         t_mat,
         gamma,
         state_rewards,
@@ -211,6 +358,7 @@ def v2q(v_star, xtr, phi, reward):
         Args:
             v_star (numpy array): |S| vector of optimal state values
             t_mat (numpy array): |S|x|A|x|S| transition matrix
+            terminal_states (numpy array): |S| boolean indicator vector showing if a state is terminal
             gamma (float): Discount factor
             state_rewards (numpy array): |S| array of state rewards
             state_action_rewards (numpy array): |S|x|A| array of state-action rewards
@@ -221,8 +369,14 @@ def v2q(v_star, xtr, phi, reward):
         """
 
         q_star = np.zeros(t_mat.shape[0 : 1 + 1])
+        for s1 in range(t_mat.shape[0]):
+            if terminal_states[s1]:
+                q_star[s1, :] = state_rewards[s1]
 
         for s1 in range(t_mat.shape[0]):
+            if terminal_states[s1]:
+                # Don't update terminal states
+                continue
             for a in range(t_mat.shape[1]):
                 for s2 in range(t_mat.shape[2]):
                     q_star[s1, a] += t_mat[s1, a, s2] * (
@@ -261,6 +415,7 @@ def pi_eval(xtr, phi, reward, policy, eps=1e-6, num_runs=1):
     @jit(nopython=True)
     def _nb_policy_evaluation(
         t_mat,
+        terminal_states,
         gamma,
         rs,
         rsa,
@@ -272,6 +427,7 @@ def pi_eval(xtr, phi, reward, policy, eps=1e-6, num_runs=1):
 
         Args:
             t_mat (numpy array): |S|x|A|x|S| transition matrix
+            terminal_states (numpy array): |S| boolean array of terminal state indicators
             gamma (float): Discount factor
             rs (numpy array): |S| State reward vector
             rsa (numpy array): |S|x|A| State-action reward vector
@@ -286,11 +442,17 @@ def pi_eval(xtr, phi, reward, policy, eps=1e-6, num_runs=1):
         """
 
         v_pi = np.zeros(t_mat.shape[0])
+        for s1 in range(t_mat.shape[0]):
+            if terminal_states[s1]:
+                v_pi[s1] = rs[s1]
 
         _iteration = 0
         while True:
             delta = 0
             for s1 in range(t_mat.shape[0]):
+                if terminal_states[s1]:
+                    # Don't update terminal states
+                    continue
                 v = v_pi[s1]
                 _tmp = 0
                 for a in range(t_mat.shape[1]):
@@ -298,7 +460,7 @@ def pi_eval(xtr, phi, reward, policy, eps=1e-6, num_runs=1):
                         continue
                     for s2 in range(t_mat.shape[2]):
                         _tmp += t_mat[s1, a, s2] * (
-                            rsa[s1, a] + rsas[s1, a, s2] + rs[s2] + gamma * v_pi[s2]
+                            rs[s1] + rsa[s1, a] + rsas[s1, a, s2] + gamma * v_pi[s2]
                         )
                 v_pi[s1] = _tmp
                 delta = max(delta, np.abs(v - v_pi[s1]))
@@ -360,7 +522,7 @@ def q_grad_fpi(theta, xtr, phi, tol=1e-3):
     # Get optimal *DETERMINISTIC* policy
     # (the fixed point iteration is only valid for deterministic policies)
     reward = Linear(theta)
-    q_star = q_vi(xtr, phi, reward)
+    _, q_star = vi(xtr, phi, reward)
     pi_star = OptimalPolicy(q_star, stochastic=False)
 
     @jit(nopython=True)
@@ -462,7 +624,7 @@ def q_grad_sim(
 
     # Get optimal policy
     reward = Linear(theta)
-    q_star = q_vi(xtr, phi, reward)
+    _, q_star = vi(xtr, phi, reward)
     pi_star = OptimalPolicy(q_star, stochastic=True)
 
     # Duplicate the MDP, but clear all terminal states
@@ -514,11 +676,11 @@ def q_grad_nd(theta, xtr, phi, dtheta=0.01):
         # Solve for Q-function with upper and lower reward parameter increments
         theta_lower = theta.copy()
         theta_lower[theta_i] -= dtheta
-        q_star_lower = q_vi(xtr, phi, Linear(theta_lower))
+        _, q_star_lower = vi(xtr, phi, Linear(theta_lower))
 
         theta_upper = theta.copy()
         theta_upper[theta_i] += dtheta
-        q_star_upper = q_vi(xtr, phi, Linear(theta_upper))
+        _, q_star_upper = vi(xtr, phi, Linear(theta_upper))
 
         # Take numerical difference to estimate gradient
         dq_dtheta[:, :, theta_i] = (q_star_upper - q_star_lower) / (2.0 * dtheta)
