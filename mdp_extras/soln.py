@@ -3,9 +3,11 @@
 import abc
 import copy
 import pickle
+import torch
 import warnings
 
 import numpy as np
+import torch.nn as nn
 import itertools as it
 
 from numba import jit
@@ -1082,3 +1084,156 @@ class BoltzmannExplorationPolicy(Policy):
         total_log_prob = np.log(np.sum(np.exp(log_prob)))
         log_prob -= total_log_prob
         return log_prob
+
+
+class MLPGaussianPolicy(nn.Module, Policy):
+    """An MLP-Gaussian policy with a single hidden layer and constant standard deviation
+
+    TODO ajs 13/May/2021 Add support for >1 action
+    TODO ajs 13/May/2021 Add support for learned standard deviation
+
+    Supports arbitrary observation spaces, and single-dimensional continuous action spaces.
+
+    Uses PyTorch for MLP implementation and training. Provides a convenience method for
+    behaviour cloning.
+    """
+
+    def __init__(self, f_dim, hidden_size=20, std=1.0, lr=0.01):
+        """C-tor
+
+        Args:
+            f_dim (int): Dimension of input feature vector
+
+            hidden_size (int): Number of hidden units
+            std (float): Fixed standard deviation of gaussian policy
+            lr (float): Learning rate for Adam optimizer
+        """
+        super().__init__()
+        self.lr = lr
+
+        self.fc1 = nn.Linear(f_dim, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, 1)
+        self.std = std
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+
+    def forward(self, x):
+        # Input is feature vector phi(s, a, s')
+        x = x.float()
+        x = self.fc1(x)
+        x = nn.functional.relu(x)
+        x = self.fc2(x)
+        # Output is mean of a gaussian from which we sample an action
+        return x
+
+    def predict(self, x):
+        """Predict next action and distribution over states
+
+        N.b. This function matches the API of the stabe-baselines policies.
+
+        Args:
+            x (int): Input feature vector
+
+        Returns:
+            (int): Sampled action
+            (None): Placeholder to ensure this function matches the stable-baselines
+                policy interface. Some policies use this argument to return a prediction
+                over future state distributions - we do not.
+        """
+        mean = self(x)
+        dist = torch.distributions.normal.Normal(mean, self.std)
+        return dist.sample(), None
+
+    def prob_for_state(self, s):
+        """Get the action probability vector for the given state
+
+        Args:
+            s (int): Current state
+
+        Returns:
+            (numpy array): Probability distribution over actions
+        """
+        raise ValueError(
+            "MLPGaussianPolicy supports a single continuous action, this method is only for discrete action spaces"
+        )
+
+    def log_prob_for_state(self, s):
+        """Get the action log probability vector for the given state
+
+        Args:
+            s (int): Current state
+
+        Returns:
+            (numpy array): Log probability distribution over actions
+        """
+        raise ValueError(
+            "MLPGaussianPolicy supports a single continuous action, this method is only for discrete action spaces"
+        )
+
+    def prob_for_state_action(self, x, a):
+        """Get the probability for the given state, action
+
+        Args:
+            x (int): Current feature vector phi(s, a, s')
+            a (int): Chosen action
+
+        Returns:
+            (float): Probability of choosing a from phi(s, a, s')
+        """
+        return torch.exp(self.log_prob_for_state_action(x, a))
+
+    def log_prob_for_state_action(self, x, a):
+        """Get the log probability for the given state, action
+
+        Args:
+            x (int): Current feature vector phi(s, a, s')
+            a (int): Chosen action
+
+        Returns:
+            (float): Log probability of choosing a from phi(s, a, s')
+        """
+        mean = self(x)
+        dist = torch.distributions.normal.Normal(mean, self.std)
+        return dist.log_prob(a)
+
+    def param_gradient(self):
+        """Get the gradient of every parameter in a single vector"""
+        vec = []
+        for param in self.parameters():
+            vec.append(param.grad.view(-1))
+        return torch.cat(vec)
+
+    def behaviour_clone(self, dataset, phi, num_epochs=3000, log_interval=None):
+        """Behaviour cloning using full-batch gradient descent
+
+        Args:
+            dataset (list): List of (s, a) rollouts to clone from
+            phi (FeatureFunction): Feature function accepting states and outputting feature vectors
+
+            num_epochs (int): Number of epochs to train for
+            log_interval (int): Logging interval, set to 0 to do no logging
+        """
+        # Convert states to features, and flatten dataset
+        phis = []
+        actions = []
+        for path in dataset:
+            _states, _actions = zip(*path[:-1])
+            phis.extend([phi(s) for s in _states])
+            actions.extend(_actions)
+        phis = torch.tensor(phis)
+        actions = torch.tensor(actions)
+
+        for epoch in range(num_epochs):
+            # Run one epoch of training
+            self.optimizer.zero_grad()
+            # loss = self.loss_fn(self(phis), actions)
+            loss = torch.mean(torch.norm(self(phis) - actions, dim=0) ** 2)
+            loss.backward()
+            self.optimizer.step()
+
+            if log_interval is not None and epoch % log_interval == 0:
+                print(f"Epoch {epoch}, loss={loss.item()}")
+
+        return self
+
+
+# TODO ajs 13/05/21 Add MLPCategoricalPolicy for discrete action spaces

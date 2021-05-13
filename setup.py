@@ -9,6 +9,7 @@ setup(
     install_requires=[
         "numpy",
         "scipy",
+        "torch",
         "gym",
         "numba",
     ],
