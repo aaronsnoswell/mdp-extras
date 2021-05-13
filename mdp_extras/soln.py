@@ -48,9 +48,10 @@ def vi(
         max_iter (int): If provided, iteration will terminate regardless of convergence
             after this many iterations.
         type (str): Type of value functions to calculate. Options include
-            'rational' - Regular VI - take max over future actions
-            'soft' - Soft VI - take softmax over future actions
-            'mellow' - Mellow VI - take mellowmax over future actions
+             - 'rational' - Regular VI - take max over future actions
+             - 'soft' - Soft VI - take softmax over future actions
+             - 'mellow' - Mellow VI - take mellowmax over future actions
+            N.b. - for now, softmax and mellowmax do not make use of Numba JIT optimization
         temperature (float): Temperature parameter, only used for soft or mellomax. As temp -> 0, these
             VI algorithms approach rational VI.
 
@@ -124,6 +125,8 @@ def vi(
 
             # Check value function convergence
             if delta < eps:
+                if verbose:
+                    print("Value Iteration #", _iter, " delta=", delta, " (converged)")
                 break
             else:
                 if verbose:
@@ -133,7 +136,7 @@ def vi(
 
         return s_value, sa_value
 
-    @jit(nopython=True)
+    # @jit(nopython=True)
     def nb_vi_soft(
         t_mat,
         terminal_states,
@@ -198,6 +201,8 @@ def vi(
 
             # Check value function convergence
             if delta < eps:
+                if verbose:
+                    print("Value Iteration #", _iter, " delta=", delta, " (converged)")
                 break
             else:
                 if verbose:
@@ -207,7 +212,7 @@ def vi(
 
         return s_value, sa_value
 
-    @jit(nopython=True)
+    # @jit(nopython=True)
     def nb_vi_mellow(
         t_mat,
         terminal_states,
@@ -272,6 +277,8 @@ def vi(
 
             # Check value function convergence
             if delta < eps:
+                if verbose:
+                    print("Value Iteration #", _iter, " delta=", delta, " (conveged)")
                 break
             else:
                 if verbose:
@@ -288,9 +295,9 @@ def vi(
             np.array(xtr.terminal_state_mask),
             xtr.gamma,
             *reward.structured(xtr, phi),
-            eps,
-            verbose,
-            max_iter,
+            eps=eps,
+            verbose=verbose,
+            max_iter=max_iter,
         )
     elif type == "soft":
         return nb_vi_soft(
@@ -298,10 +305,10 @@ def vi(
             np.array(xtr.terminal_state_mask),
             xtr.gamma,
             *reward.structured(xtr, phi),
-            eps,
-            verbose,
-            max_iter,
             temperature,
+            eps=eps,
+            verbose=verbose,
+            max_iter=max_iter,
         )
     elif type == "mellow":
         return nb_vi_mellow(
@@ -309,10 +316,10 @@ def vi(
             np.array(xtr.terminal_state_mask),
             xtr.gamma,
             *reward.structured(xtr, phi),
-            eps,
-            verbose,
-            max_iter,
             temperature,
+            eps=eps,
+            verbose=verbose,
+            max_iter=max_iter,
         )
     else:
         raise ValueError(f"Unknown type parameter {type}")
@@ -727,33 +734,6 @@ class Policy(abc.ABC):
         action = np.random.choice(np.arange(self.q.shape[1]), p=self.prob_for_state(s))
         return action, None
 
-    def path_log_action_probability(self, p):
-        """Compute log-likelihood of [(s, a), ..., (s, None)] path under this policy
-
-        N.B. - this does NOT account for the likelihood of starting at state s1 under
-            the MDP dynamics, or the MDP dynamics themselves
-
-        Args:
-            p (list): List of state-action tuples
-
-        Returns:
-            (float): Absolute log-likelihood of the path under this policy
-        """
-
-        # We start with probability 1.0
-        ll = np.log(1.0)
-
-        # N.b. - final tuple is (s, None), which we skip
-        # p = [(s, a), (s, a), ..., (s, None)]
-        for s, a in p[:-1]:
-            log_action_prob = self.log_prob_for_state_action(s, a)
-            if np.isneginf(log_action_prob):
-                return -np.inf
-
-            ll += log_action_prob
-
-        return ll
-
     def log_prob_for_state(self, s):
         """Get the action log probability vector for the given state
 
@@ -815,6 +795,33 @@ class Policy(abc.ABC):
             return 0.0
         else:
             return log_action_probs[a]
+
+    def path_log_action_probability(self, p):
+        """Compute log-likelihood of [(s, a), ..., (s, None)] path under this policy
+
+        N.B. - this does NOT account for the likelihood of starting at state s1 under
+            the MDP dynamics, or the MDP dynamics themselves
+
+        Args:
+            p (list): List of state-action tuples
+
+        Returns:
+            (float): Absolute log-likelihood of the path under this policy
+        """
+
+        # We start with probability 1.0
+        ll = np.log(1.0)
+
+        # N.b. - final tuple is (s, None), which we skip
+        # p = [(s, a), (s, a), ..., (s, None)]
+        for s, a in p[:-1]:
+            log_action_prob = self.log_prob_for_state_action(s, a)
+            if np.isneginf(log_action_prob):
+                return -np.inf
+
+            ll += log_action_prob
+
+        return ll
 
     def get_rollouts(
         self, env, num, max_path_length=None, start_state=None, start_action=None
