@@ -10,6 +10,7 @@ import numpy as np
 import torch.nn as nn
 import itertools as it
 
+
 from numba import jit
 
 from mdp_extras.features import FeatureFunction
@@ -1236,4 +1237,142 @@ class MLPGaussianPolicy(nn.Module, Policy):
         return self
 
 
-# TODO ajs 13/05/21 Add MLPCategoricalPolicy for discrete action spaces
+class MLPCategoricalPolicy(nn.Module, Policy):
+    """An MLP-Categorical policy with a single hidden layer
+
+    Supports arbitrary observation spaces, and discrete action spaces.
+
+    Uses PyTorch for MLP implementation and training. Provides a convenience method for
+    behaviour cloning.
+    """
+
+    def __init__(self, f_dim, a_dim, hidden_size=20, lr=0.01):
+        """C-tor
+
+        Args:
+            f_dim (int): Dimension of input feature vector
+
+            hidden_size (int): Number of hidden units
+            std (float): Fixed standard deviation of gaussian policy
+            lr (float): Learning rate for Adam optimizer
+        """
+        super().__init__()
+        self.lr = lr
+
+        self.fc1 = nn.Linear(f_dim, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, a_dim)
+
+        self.loss_fn = torch.nn.CrossEntropyLoss(reduction="sum")
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+
+    def forward(self, x):
+        # Input is feature vector phi(s, a, s')
+        x = x.float()
+        x = self.fc1(x)
+        x = nn.functional.relu(x)
+        x = self.fc2(x)
+        # Output is vector of categorical log probabilities from which we sample an action
+        return x
+
+    def predict(self, x):
+        """Predict next action and distribution over states
+
+        N.b. This function matches the API of the stabe-baselines policies.
+
+        Args:
+            x (int): Input feature vector
+
+        Returns:
+            (int): Sampled action
+            (None): Placeholder to ensure this function matches the stable-baselines
+                policy interface. Some policies use this argument to return a prediction
+                over future state distributions - we do not.
+        """
+        probs = torch.exp(self(x))
+        dist = torch.distributions.Categorical(probs)
+        return dist.sample(), None
+
+    def prob_for_state(self, x):
+        """Get the action probability vector for the given feature vector
+
+        Args:
+            x (numpy array): Current feature vector
+
+        Returns:
+            (numpy array): Probability distribution over actions
+        """
+        return torch.exp(self.log_prob_for_state(x))
+
+    def log_prob_for_state(self, x):
+        """Get the action log probability vector for the given feature vector
+
+        Args:
+            x (numpy array): Current feature vector
+
+        Returns:
+            (numpy array): Log probability distribution over actions
+        """
+        return self(x)
+
+    def prob_for_state_action(self, x, a):
+        """Get the probability for the given state, action
+
+        Args:
+            x (int): Current feature vector phi(s, a, s')
+            a (int): Chosen action
+
+        Returns:
+            (float): Probability of choosing a from phi(s, a, s')
+        """
+        return torch.exp(self.log_prob_for_state_action(x, a))
+
+    def log_prob_for_state_action(self, x, a):
+        """Get the log probability for the given state, action
+
+        Args:
+            x (int): Current feature vector phi(s, a, s')
+            a (int): Chosen action
+
+        Returns:
+            (float): Log probability of choosing a from phi(s, a, s')
+        """
+        return self(x)[int(a.item())]
+
+    def param_gradient(self):
+        """Get the gradient of every parameter in a single vector"""
+        vec = []
+        for param in self.parameters():
+            vec.append(param.grad.view(-1))
+        return torch.cat(vec)
+
+    def behaviour_clone(self, dataset, phi, num_epochs=3000, log_interval=None):
+        """Behaviour cloning using full-batch gradient descent
+
+        Args:
+            dataset (list): List of (s, a) rollouts to clone from
+            phi (FeatureFunction): Feature function accepting states and outputting feature vectors
+
+            num_epochs (int): Number of epochs to train for
+            log_interval (int): Logging interval, set to 0 to do no logging
+        """
+        # Convert states to features, and flatten dataset
+        phis = []
+        actions = []
+        for path in dataset:
+            _states, _actions = zip(*path[:-1])
+            phis.extend([phi(s) for s in _states])
+            actions.extend(_actions)
+        phis = torch.tensor(phis)
+        actions = torch.tensor(actions, dtype=torch.long)
+
+        for epoch in range(num_epochs):
+            # Run one epoch of training
+            self.optimizer.zero_grad()
+            loss = self.loss_fn(self(phis), actions)
+            loss.backward()
+            self.optimizer.step()
+
+            if log_interval is not None and epoch % log_interval == 0:
+                print(f"Epoch {epoch}, loss={loss.item()}")
+
+        return self
