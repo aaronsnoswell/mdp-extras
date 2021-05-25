@@ -1092,6 +1092,7 @@ class MLPGaussianPolicy(nn.Module, Policy):
 
     TODO ajs 13/May/2021 Add support for >1 action
     TODO ajs 13/May/2021 Add support for learned standard deviation
+    TODO ajs 25/May/2021 General base class for PyTorch policies
 
     Supports arbitrary observation spaces, and single-dimensional continuous action spaces.
 
@@ -1205,6 +1206,8 @@ class MLPGaussianPolicy(nn.Module, Policy):
 
     def behaviour_clone(self, dataset, phi, num_epochs=3000, log_interval=None):
         """Behaviour cloning using full-batch gradient descent
+
+        TODO ajs 25/May/2021 Support stochastic gradient descent
 
         Args:
             dataset (list): List of (s, a) rollouts to clone from
@@ -1347,6 +1350,8 @@ class MLPCategoricalPolicy(nn.Module, Policy):
 
     def behaviour_clone(self, dataset, phi, num_epochs=3000, log_interval=None):
         """Behaviour cloning using full-batch gradient descent
+
+        TODO ajs 25/May/2021 Support stochastic gradient descent
 
         Args:
             dataset (list): List of (s, a) rollouts to clone from
