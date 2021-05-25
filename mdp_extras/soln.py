@@ -1204,7 +1204,9 @@ class MLPGaussianPolicy(nn.Module, Policy):
             vec.append(param.grad.view(-1))
         return torch.cat(vec)
 
-    def behaviour_clone(self, dataset, phi, num_epochs=3000, log_interval=None):
+    def behaviour_clone(
+        self, dataset, phi, num_epochs=3000, log_interval=None, weights=None
+    ):
         """Behaviour cloning using full-batch gradient descent
 
         TODO ajs 25/May/2021 Support stochastic gradient descent
@@ -1215,13 +1217,19 @@ class MLPGaussianPolicy(nn.Module, Policy):
 
             num_epochs (int): Number of epochs to train for
             log_interval (int): Logging interval, set to 0 to do no logging
+            weights (numpy array): Path weights for weighted behaviour cloning
         """
+
+        if weights is None:
+            weights = np.ones(len(dataset))
+
         # Convert states to features, and flatten dataset
         phis = []
         actions = []
-        for path in dataset:
+        for path, weight in zip(dataset, weights):
             _states, _actions = zip(*path[:-1])
-            phis.extend([phi(s) for s in _states])
+            path_fvs = np.array([phi(s) for s in _states])
+            phis.extend(weight * path_fvs)
             actions.extend(_actions)
         phis = torch.tensor(phis)
         actions = torch.tensor(actions)
@@ -1229,7 +1237,6 @@ class MLPGaussianPolicy(nn.Module, Policy):
         for epoch in range(num_epochs):
             # Run one epoch of training
             self.optimizer.zero_grad()
-            # loss = self.loss_fn(self(phis), actions)
             loss = torch.mean(torch.norm(self(phis) - actions, dim=0) ** 2)
             loss.backward()
             self.optimizer.step()
@@ -1348,7 +1355,9 @@ class MLPCategoricalPolicy(nn.Module, Policy):
             vec.append(param.grad.view(-1))
         return torch.cat(vec)
 
-    def behaviour_clone(self, dataset, phi, num_epochs=3000, log_interval=None):
+    def behaviour_clone(
+        self, dataset, phi, num_epochs=3000, log_interval=None, weights=None
+    ):
         """Behaviour cloning using full-batch gradient descent
 
         TODO ajs 25/May/2021 Support stochastic gradient descent
@@ -1359,13 +1368,19 @@ class MLPCategoricalPolicy(nn.Module, Policy):
 
             num_epochs (int): Number of epochs to train for
             log_interval (int): Logging interval, set to 0 to do no logging
+            weights (numpy array): Path weights for weighted behaviour cloning
         """
+
+        if weights is None:
+            weights = np.ones(len(dataset))
+
         # Convert states to features, and flatten dataset
         phis = []
         actions = []
-        for path in dataset:
+        for path, weight in zip(dataset, weights):
             _states, _actions = zip(*path[:-1])
-            phis.extend([phi(s) for s in _states])
+            path_fvs = np.array([phi(s) for s in _states])
+            phis.extend(weight * path_fvs)
             actions.extend(_actions)
         phis = torch.tensor(phis)
         actions = torch.tensor(actions, dtype=torch.long)
