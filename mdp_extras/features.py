@@ -1,4 +1,5 @@
 import abc
+import copy
 import warnings
 from enum import Enum
 
@@ -284,3 +285,82 @@ class Disjoint(FeatureFunction):
             )
         return self._vec.copy()
 
+
+class MirrorWrap(FeatureFunction):
+    """A class that extends another feature function with it's negation, and the constant zero
+
+    This procedure is useful for IRL algorithms that only support convex reward weights on a simplex, and is
+    described in detail in section 5.2, "Representation Error" of
+
+     * Syed, Umar, and Robert E. Schapire. "A game-theoretic approach to apprenticeship learning." Advances in neural
+       information processing systems. 2008.
+
+    """
+
+    def __init__(self, inner_class):
+        """C-tor
+
+        Args:
+            inner_class (FeatureFunction): FeatureFunction that we are mirroring here
+        """
+        self.inner_class = inner_class
+
+    @property
+    def type(self):
+        """Reflect the inner class' type"""
+        return self.inner_class.type
+
+    def __len__(self):
+        """Return the length of the wrapped feature vec
+
+        Returns:
+            (int): Length of this feature vector
+        """
+        # We add the negation (x2) and the constant zero (+1)
+        return self.inner_class.__len__() * 2 + 1
+
+    def __call__(self, o1, a=None, o2=None):
+        """Get the wrapped feature vector given state(s) and/or action
+
+        Args:
+            o1 (any): Current observation
+            a (any): Current action
+            o2 (any): Next observation
+
+        Returns:
+            (numpy array): Feature vector for the current state(s) and/or action
+        """
+        feature_vec = self.inner_class(o1, a, o2)
+        negation = np.array(-1.0 * feature_vec)
+        zero_constant = np.array([0.0])
+        return np.concatenate((feature_vec, negation, zero_constant))
+
+    def update_reward(self, reward):
+        """Update a reward function object to match the new feature function"""
+        if not isinstance(reward, r.Linear):
+            raise NotImplementedError
+
+        assert len(reward.theta) == len(self.inner_class)
+
+        new_theta = np.zeros(len(self))
+        new_theta[: len(self.inner_class)] = reward.theta
+        return r.Linear(new_theta)
+
+    def unupdate_reward(self, reward):
+        """Un-Update a reward function object to match the original feature function"""
+        if not isinstance(reward, r.Linear):
+            raise NotImplementedError
+
+        assert len(reward.theta) == len(self)
+
+        new_theta = np.zeros(len(self.inner_class))
+
+        # The first half of the features get added
+        new_theta += reward.theta[0 : len(new_theta)]
+
+        # The second half of the features get subtracted
+        new_theta -= reward.theta[len(new_theta) : -1]
+
+        # The final 'zero' element does nothing
+
+        return r.Linear(new_theta)
