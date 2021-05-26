@@ -1129,13 +1129,15 @@ class MLPGaussianPolicy(nn.Module, Policy):
         # Output is mean of a gaussian from which we sample an action
         return x
 
-    def predict(self, x):
+    def predict(self, stoch=True):
         """Predict next action and distribution over states
 
         N.b. This function matches the API of the stabe-baselines policies.
 
         Args:
             x (int): Input feature vector
+
+            stoch (bool): If true, sample action stochastically
 
         Returns:
             (int): Sampled action
@@ -1144,8 +1146,12 @@ class MLPGaussianPolicy(nn.Module, Policy):
                 over future state distributions - we do not.
         """
         mean = self(x)
-        dist = torch.distributions.normal.Normal(mean, self.std)
-        return dist.sample(), None
+        if stoch:
+            dist = torch.distributions.normal.Normal(mean, self.std)
+            a = dist.sample()
+        else:
+            a = mean
+        return a, None
 
     def prob_for_state(self, s):
         """Get the action probability vector for the given state
@@ -1288,13 +1294,15 @@ class MLPCategoricalPolicy(nn.Module, Policy):
         # Output is vector of categorical log probabilities from which we sample an action
         return x
 
-    def predict(self, x):
+    def predict(self, x, stoch=True):
         """Predict next action and distribution over states
 
         N.b. This function matches the API of the stabe-baselines policies.
 
         Args:
             x (int): Input feature vector
+
+            stoch (bool): If true, sample action stochastically
 
         Returns:
             (int): Sampled action
@@ -1303,8 +1311,12 @@ class MLPCategoricalPolicy(nn.Module, Policy):
                 over future state distributions - we do not.
         """
         probs = torch.exp(self(x))
-        dist = torch.distributions.Categorical(probs)
-        return dist.sample(), None
+        if stoch:
+            dist = torch.distributions.Categorical(probs)
+            a = dist.sample()
+        else:
+            a = torch.argmax(probs)
+        return a, None
 
     def prob_for_state(self, x):
         """Get the action probability vector for the given feature vector
