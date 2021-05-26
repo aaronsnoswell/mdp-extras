@@ -488,6 +488,7 @@ def pi_eval(xtr, phi, reward, policy, eps=1e-6, num_runs=1):
         policy_state_values.append(
             _nb_policy_evaluation(
                 xtr.t_mat,
+                xtr.terminal_state_mask,
                 xtr.gamma,
                 *reward.structured(xtr, phi),
                 action_vector,
