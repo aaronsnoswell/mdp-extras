@@ -1120,6 +1120,8 @@ class MLPGaussianPolicy(nn.Module, Policy):
 
     def forward(self, x):
         # Input is feature vector phi(s, a, s')
+        if not isinstance(x, torch.Tensor):
+            x = torch.tensor(x)
         x = x.float()
         x = self.fc1(x)
         x = nn.functional.relu(x)
@@ -1277,6 +1279,8 @@ class MLPCategoricalPolicy(nn.Module, Policy):
 
     def forward(self, x):
         # Input is feature vector phi(s, a, s')
+        if not isinstance(x, torch.Tensor):
+            x = torch.tensor(x)
         x = x.float()
         x = self.fc1(x)
         x = nn.functional.relu(x)
