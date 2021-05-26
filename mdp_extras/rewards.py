@@ -2,7 +2,8 @@ import abc
 
 import numpy as np
 import itertools as it
-from mdp_extras import DiscreteExplicitExtras, Indicator
+
+import mdp_extras.features as f
 
 
 class RewardFunction(abc.ABC):
@@ -13,10 +14,10 @@ class RewardFunction(abc.ABC):
 
     def __call__(self, v):
         """Get reward given feature input
-        
+
         Args:
             v (numpy array): Feature vector
-        
+
         Returns:
             (float): Scalar reward
         """
@@ -28,7 +29,7 @@ class Linear(RewardFunction):
 
     def __init__(self, theta):
         """C-tor
-        
+
         Args:
             theta (numpy array): Linear reward weights
         """
@@ -36,10 +37,10 @@ class Linear(RewardFunction):
 
     def __call__(self, v):
         """Get reward given feature input
-        
+
         Args:
             v (numpy array): Feature vector
-        
+
         Returns:
             (float): Scalar reward
         """
@@ -53,21 +54,21 @@ class Linear(RewardFunction):
     @staticmethod
     def fromdiscrete(env, xtr=None):
         """Builds LienarReward from DiscreteEnv
-        
+
         Args:
             env (gym.envs.toy_text.discrete.DiscreteEnv): Environment to build Extras
                 from
-                
+
             xtr (DiscreteExplicitExtras): Optional extras object, if not provided, will
                 be constructed locally
-            
+
         Returns:
             (Indicator): Indicator feature function
             (LinearReward): Reward function
         """
 
         if xtr is None:
-            xtr = DiscreteExplicitExtras.fromdiscrete(env)
+            xtr = f.DiscreteExplicitExtras.fromdiscrete(env)
 
         # Infer reward structure from transition tensor
         _rs = {s: set() for s in xtr.states}
@@ -137,7 +138,7 @@ class Linear(RewardFunction):
 
     def structured(self, xtr, phi):
         """Re-shape to structured reward representation matrices
-        
+
         Args:
             xtr (DiscreteExplicitExtras): Extras object
             phi (Indicator): Indicator feature function for this reward
@@ -147,14 +148,14 @@ class Linear(RewardFunction):
         rsas = np.zeros(
             (len(xtr.states), len(xtr.actions), len(xtr.states)), dtype=np.float
         )
-        if phi.type == Indicator.Type.OBSERVATION:
+        if phi.type == f.Indicator.Type.OBSERVATION:
             for o1 in xtr.states:
                 rs[o1] = self(phi(o1))
-        elif phi.type == Indicator.Type.OBSERVATION_ACTION:
+        elif phi.type == f.Indicator.Type.OBSERVATION_ACTION:
             for o1 in xtr.states:
                 for a in xtr.actions:
                     rsa[o1, a] = self(phi(o1, a))
-        elif phi.type == Indicator.Type.OBSERVATION_ACTION_OBSERVATION:
+        elif phi.type == f.Indicator.Type.OBSERVATION_ACTION_OBSERVATION:
             for o1 in xtr.states:
                 for a in xtr.actions:
                     for o2 in xtr.states:
