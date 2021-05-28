@@ -1088,126 +1088,80 @@ class BoltzmannExplorationPolicy(Policy):
         return log_prob
 
 
-class MLPGaussianPolicy(nn.Module, Policy):
-    """An MLP-Gaussian policy with a single hidden layer and constant standard deviation
+class TorchPolicy(nn.Module, Policy):
+    """An abstract base policy class for a single hidden layer MLP that uses PyTorch internally"""
 
-    TODO ajs 13/May/2021 Add support for >1 action
-    TODO ajs 13/May/2021 Add support for learned standard deviation
-    TODO ajs 25/May/2021 General base class for PyTorch policies
-
-    Supports arbitrary observation spaces, and single-dimensional continuous action spaces.
-
-    Uses PyTorch for MLP implementation and training. Provides a convenience method for
-    behaviour cloning.
-    """
-
-    def __init__(self, f_dim, hidden_size=20, std=1.0, lr=0.01):
+    def __init__(self, in_dim, out_dim, hidden_size, learning_rate=0.01):
         """C-tor
 
         Args:
-            f_dim (int): Dimension of input feature vector
+            in_dim (int): Input (feature vector) size
+            out_dim (int): Output (action vector) size
+            hidden_size (int): Size of the hidden layer
 
-            hidden_size (int): Number of hidden units
-            std (float): Fixed standard deviation of gaussian policy
-            lr (float): Learning rate for Adam optimizer
+            learning_rate (float): Learning rate for optimizer used for training
         """
         super().__init__()
-        self.lr = lr
-
-        self.fc1 = nn.Linear(f_dim, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, 1)
-        self.std = std
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        # super(TorchPolicy, self).__init__()
+        # Implementing classes should set these elements
+        self.optimizer = None
+        self.loss_fn = None
+        self.loss_target_type = None
+        # raise NotImplementedError
 
     def forward(self, x):
-        # Input is feature vector phi(s, a, s')
-        if not isinstance(x, torch.Tensor):
-            x = torch.tensor(x)
-        x = x.float()
-        x = self.fc1(x)
-        x = nn.functional.relu(x)
-        x = self.fc2(x)
-        # Output is mean of a gaussian from which we sample an action
-        return x
+        """Forward pass through the policy network
+
+        Args:
+            x (torch.Tensor): Input feature vector
+        """
+        raise NotImplementedError
 
     def predict(self, stoch=True):
-        """Predict next action and distribution over states
+        """Predict the next action and state distribution
 
         N.b. This function matches the API of the stabe-baselines policies.
 
         Args:
-            x (int): Input feature vector
-
-            stoch (bool): If true, sample action stochastically
+            stoch (bool): If true, sample an action stochastically, otherwise choose
+                the most likely action.
 
         Returns:
-            (int): Sampled action
-            (None): Placeholder to ensure this function matches the stable-baselines
-                policy interface. Some policies use this argument to return a prediction
-                over future state distributions - we do not.
+            (torch.Tensor): Action vector
         """
-        mean = self(x)
-        if stoch:
-            dist = torch.distributions.normal.Normal(mean, self.std)
-            a = dist.sample()
-        else:
-            a = mean
-        return a, None
+        raise NotImplementedError
 
-    def prob_for_state(self, s):
-        """Get the action probability vector for the given state
+    def prob_for_state(self, x):
+        """Get the probability distribution over actions for the given state
+
+        This method is only applicable for policies with discrete action spaces
 
         Args:
-            s (int): Current state
+            x (torch.Tensor): Input feature vector phi(s, a, s')
 
         Returns:
-            (numpy array): Probability distribution over actions
+            (torch.Tensor): Vector of discrete probability distributions over actions
         """
-        raise ValueError(
-            "MLPGaussianPolicy supports a single continuous action, this method is only for discrete action spaces"
-        )
-
-    def log_prob_for_state(self, s):
-        """Get the action log probability vector for the given state
-
-        Args:
-            s (int): Current state
-
-        Returns:
-            (numpy array): Log probability distribution over actions
-        """
-        raise ValueError(
-            "MLPGaussianPolicy supports a single continuous action, this method is only for discrete action spaces"
-        )
+        return torch.exp(self.log_prob_for_state(x))
 
     def prob_for_state_action(self, x, a):
         """Get the probability for the given state, action
 
         Args:
-            x (int): Current feature vector phi(s, a, s')
-            a (int): Chosen action
+            x (torch.Tensor): Input feature vector phi(s, a, s')
+            a (torch.Tensor): Chosen action
 
         Returns:
-            (float): Probability of choosing a from phi(s, a, s')
+            (torch.Tensor): Probability of choosing a from phi(s, a, s')
         """
         return torch.exp(self.log_prob_for_state_action(x, a))
 
-    def log_prob_for_state_action(self, x, a):
-        """Get the log probability for the given state, action
-
-        Args:
-            x (int): Current feature vector phi(s, a, s')
-            a (int): Chosen action
+    def param_gradient(self):
+        """Get the gradient of every parameter in this model as a single vector
 
         Returns:
-            (float): Log probability of choosing a from phi(s, a, s')
+            (torch.Tensor): A vector containing the gradient of every parameter in this model
         """
-        mean = self(x)
-        dist = torch.distributions.normal.Normal(mean, self.std)
-        return dist.log_prob(a)
-
-    def param_gradient(self):
-        """Get the gradient of every parameter in a single vector"""
         vec = []
         for param in self.parameters():
             vec.append(param.grad.view(-1))
@@ -1241,12 +1195,12 @@ class MLPGaussianPolicy(nn.Module, Policy):
             phis.extend(weight * path_fvs)
             actions.extend(_actions)
         phis = torch.tensor(phis)
-        actions = torch.tensor(actions)
+        actions = torch.tensor(actions, dtype=self.loss_target_type)
 
         for epoch in range(num_epochs):
             # Run one epoch of training
             self.optimizer.zero_grad()
-            loss = torch.mean(torch.norm(self(phis) - actions, dim=0) ** 2)
+            loss = self.loss_fn(self(phis), actions)
             loss.backward()
             self.optimizer.step()
 
@@ -1256,7 +1210,109 @@ class MLPGaussianPolicy(nn.Module, Policy):
         return self
 
 
-class MLPCategoricalPolicy(nn.Module, Policy):
+class MLPGaussianPolicy(TorchPolicy):
+    """An MLP-Gaussian policy with a single hidden layer and constant standard deviation
+
+    TODO ajs 13/May/2021 Add support for >1 action
+    TODO ajs 13/May/2021 Add support for learned standard deviation
+    TODO ajs 25/May/2021 General base class for PyTorch policies
+
+    Supports arbitrary observation spaces, and single-dimensional continuous action spaces.
+
+    Uses PyTorch for MLP implementation and training. Provides a convenience method for
+    behaviour cloning.
+    """
+
+    def __init__(self, in_dim, out_dim, hidden_size, std=1.0, learning_rate=0.01):
+        """C-tor
+
+        # TODO ajs 28/May/2021 Support learned standard deviation
+
+        Args:
+            in_dim (int): Input (feature vector) size
+            out_dim (int): Output (action vector) size
+            hidden_size (int): Size of the hidden layer
+
+            std (float): Fixed standard deviation for this model
+            learning_rate (float): Learning rate for optimizer used for training
+        """
+        super().__init__(in_dim, out_dim, hidden_size, learning_rate)
+
+        if out_dim != 1:
+            # TODO ajs 28/May/2021 Support multiple action dimensions
+            raise NotImplementedError
+
+        self.fc1 = nn.Linear(in_dim, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, out_dim)
+        self.std = std
+        self.loss_fn = torch.nn.MSELoss()
+        self.loss_target_type = torch.long
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
+
+    def forward(self, x):
+        # Input is feature vector phi(s, a, s')
+        if not isinstance(x, torch.Tensor):
+            x = torch.tensor(x)
+        x = x.float()
+        x = self.fc1(x)
+        x = nn.functional.relu(x)
+        x = self.fc2(x)
+        # Output is mean of a gaussian from which we sample an action
+        return x
+
+    def predict(self, x, stoch=True):
+        """Predict next action and distribution over states
+
+        N.b. This function matches the API of the stabe-baselines policies.
+
+        Args:
+            x (int): Input feature vector
+
+            stoch (bool): If true, sample action stochastically
+
+        Returns:
+            (int): Sampled action
+            (None): Placeholder to ensure this function matches the stable-baselines
+                policy interface. Some policies use this argument to return a prediction
+                over future state distributions - we do not.
+        """
+        mean = self(x)
+        if stoch:
+            dist = torch.distributions.normal.Normal(mean, self.std)
+            a = dist.sample()
+        else:
+            a = mean
+        return a, None
+
+    def log_prob_for_state(self, s):
+        """Get the action log probability vector for the given state
+
+        Args:
+            s (int): Current state
+
+        Returns:
+            (numpy array): Log probability distribution over actions
+        """
+        raise ValueError(
+            "MLPGaussianPolicy supports a single continuous action, this method is only for discrete action spaces"
+        )
+
+    def log_prob_for_state_action(self, x, a):
+        """Get the log probability for the given state, action
+
+        Args:
+            x (int): Current feature vector phi(s, a, s')
+            a (int): Chosen action
+
+        Returns:
+            (float): Log probability of choosing a from phi(s, a, s')
+        """
+        mean = self(x)
+        dist = torch.distributions.normal.Normal(mean, self.std)
+        return dist.log_prob(a)
+
+
+class MLPCategoricalPolicy(TorchPolicy):
     """An MLP-Categorical policy with a single hidden layer
 
     Supports arbitrary observation spaces, and discrete action spaces.
@@ -1265,24 +1321,23 @@ class MLPCategoricalPolicy(nn.Module, Policy):
     behaviour cloning.
     """
 
-    def __init__(self, f_dim, a_dim, hidden_size=20, lr=0.01):
+    def __init__(self, in_dim, out_dim, hidden_size, learning_rate=0.01):
         """C-tor
 
         Args:
-            f_dim (int): Dimension of input feature vector
-
-            hidden_size (int): Number of hidden units
-            std (float): Fixed standard deviation of gaussian policy
-            lr (float): Learning rate for Adam optimizer
+            in_dim (int): Input (feature vector) size
+            out_dim (int): Output (action vector) size
+            hidden_size (int): Size of the hidden layer
+            learning_rate (float): Learning rate for optimizer used for training
         """
-        super().__init__()
-        self.lr = lr
+        super().__init__(in_dim, out_dim, hidden_size, learning_rate)
 
-        self.fc1 = nn.Linear(f_dim, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, a_dim)
+        self.fc1 = nn.Linear(in_dim, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, out_dim)
 
         self.loss_fn = torch.nn.CrossEntropyLoss(reduction="sum")
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        self.loss_target_type = torch.long
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
 
     def forward(self, x):
         # Input is feature vector phi(s, a, s')
@@ -1319,17 +1374,6 @@ class MLPCategoricalPolicy(nn.Module, Policy):
             a = torch.argmax(probs)
         return a, None
 
-    def prob_for_state(self, x):
-        """Get the action probability vector for the given feature vector
-
-        Args:
-            x (numpy array): Current feature vector
-
-        Returns:
-            (numpy array): Probability distribution over actions
-        """
-        return torch.exp(self.log_prob_for_state(x))
-
     def log_prob_for_state(self, x):
         """Get the action log probability vector for the given feature vector
 
@@ -1340,18 +1384,6 @@ class MLPCategoricalPolicy(nn.Module, Policy):
             (numpy array): Log probability distribution over actions
         """
         return self(x)
-
-    def prob_for_state_action(self, x, a):
-        """Get the probability for the given state, action
-
-        Args:
-            x (int): Current feature vector phi(s, a, s')
-            a (int): Chosen action
-
-        Returns:
-            (float): Probability of choosing a from phi(s, a, s')
-        """
-        return torch.exp(self.log_prob_for_state_action(x, a))
 
     def log_prob_for_state_action(self, x, a):
         """Get the log probability for the given state, action
@@ -1364,52 +1396,3 @@ class MLPCategoricalPolicy(nn.Module, Policy):
             (float): Log probability of choosing a from phi(s, a, s')
         """
         return self(x)[int(a.item())]
-
-    def param_gradient(self):
-        """Get the gradient of every parameter in a single vector"""
-        vec = []
-        for param in self.parameters():
-            vec.append(param.grad.view(-1))
-        return torch.cat(vec)
-
-    def behaviour_clone(
-        self, dataset, phi, num_epochs=3000, log_interval=None, weights=None
-    ):
-        """Behaviour cloning using full-batch gradient descent
-
-        TODO ajs 25/May/2021 Support stochastic gradient descent
-
-        Args:
-            dataset (list): List of (s, a) rollouts to clone from
-            phi (FeatureFunction): Feature function accepting states and outputting feature vectors
-
-            num_epochs (int): Number of epochs to train for
-            log_interval (int): Logging interval, set to 0 to do no logging
-            weights (numpy array): Path weights for weighted behaviour cloning
-        """
-
-        if weights is None:
-            weights = np.ones(len(dataset))
-
-        # Convert states to features, and flatten dataset
-        phis = []
-        actions = []
-        for path, weight in zip(dataset, weights):
-            _states, _actions = zip(*path[:-1])
-            path_fvs = np.array([phi(s) for s in _states])
-            phis.extend(weight * path_fvs)
-            actions.extend(_actions)
-        phis = torch.tensor(phis)
-        actions = torch.tensor(actions, dtype=torch.long)
-
-        for epoch in range(num_epochs):
-            # Run one epoch of training
-            self.optimizer.zero_grad()
-            loss = self.loss_fn(self(phis), actions)
-            loss.backward()
-            self.optimizer.step()
-
-            if log_interval is not None and epoch % log_interval == 0:
-                print(f"Epoch {epoch}, loss={loss.item()}")
-
-        return self
