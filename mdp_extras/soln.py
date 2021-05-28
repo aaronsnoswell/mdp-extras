@@ -1181,6 +1181,9 @@ class TorchPolicy(nn.Module, Policy):
             num_epochs (int): Number of epochs to train for
             log_interval (int): Logging interval, set to 0 to do no logging
             weights (numpy array): Path weights for weighted behaviour cloning
+
+        Returns:
+            (float): Final BC loss of the policy
         """
 
         if weights is None:
@@ -1207,7 +1210,7 @@ class TorchPolicy(nn.Module, Policy):
             if log_interval is not None and epoch % log_interval == 0:
                 print(f"Epoch {epoch}, loss={loss.item()}")
 
-        return self
+        return loss.detach().numpy()
 
 
 class MLPGaussianPolicy(TorchPolicy):
