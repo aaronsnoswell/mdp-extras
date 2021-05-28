@@ -1335,8 +1335,9 @@ class MLPCategoricalPolicy(TorchPolicy):
         """
         super().__init__(in_dim, out_dim, hidden_size, learning_rate)
 
-        self.fc1 = nn.Linear(in_dim, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, out_dim)
+        #self.fc1 = nn.Linear(in_dim, hidden_size)
+        self.fc1 = nn.Linear(in_dim, out_dim)
+        #self.fc2 = nn.Linear(hidden_size, out_dim)
 
         self.loss_fn = torch.nn.CrossEntropyLoss(reduction="sum")
         self.loss_target_type = torch.long
@@ -1348,8 +1349,8 @@ class MLPCategoricalPolicy(TorchPolicy):
             x = torch.tensor(x)
         x = x.float()
         x = self.fc1(x)
-        x = nn.functional.relu(x)
-        x = self.fc2(x)
+        #x = nn.functional.relu(x)
+        #x = self.fc2(x)
         # Output is vector of categorical log probabilities from which we sample an action
         return x
 
