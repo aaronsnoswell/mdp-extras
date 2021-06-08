@@ -6,7 +6,9 @@ import difflib
 import warnings
 
 import numpy as np
+
 from gym.spaces import Discrete
+from joblib import Parallel, delayed
 
 
 class PaddedMDPWarning(UserWarning):
@@ -385,3 +387,67 @@ def mellowmax(x, t=1.0):
         # Handle edge-case of a single scalar
         return x
     return softmax(x, t) - t * np.log(len(x))
+
+
+def bootstrap(vec, fn, num_resamples=100, *args):
+    """Boostrap-subsample vec (by re-weighting) to estimate statistics of fn
+
+    Args:
+        vec (numpy array): Vector of observations to be re-sampled
+        fn (callable): Function that is ordinarily called as fun(vec)
+
+        num_resamples (int): Number of bootstrap re-samples to perform
+
+        *args: Other arguments to pass to fn
+
+    Returns:
+        (list): List of length num_resamples, containing the individual outputs of fn()
+            with each of the re-sampled vec instances.
+    """
+    vals = []
+    for _ in range(num_resamples):
+        # Generate sample IDs for our boostrap replicates
+        sampled_idx = np.random.randint(0, len(vec) + 1, len(vec))
+
+        # Re-weight vec to reflect our resampling
+        vec_weights = np.array([np.sum(sampled_idx == i) for i in range(len(vec))])
+        vec_rw = vec * vec_weights
+        vals.append(fn(vec_rw, *args))
+
+    return vals
+
+
+def bootstrap_parallel(vec, fn, num_jobs, num_resamples=100, backend=None, *args):
+    """Boostrap-subsample vec in parallel (by re-weighting) to estimate statistics of fn
+
+    Args:
+        vec (numpy array): Vector of observations to be re-sampled
+        fn (callable): Function that is ordinarily called as fun(vec)
+        num_jobs (int): Number of parallel workers to create
+
+        num_resamples (int): Number of bootstrap re-samples to perform
+        backend (str): Backed to pass to joblib.Parallel()
+
+        *args: Other arguments to pass to fn
+
+    Returns:
+        (list): List of length num_resamples, containing the individual outputs of fn()
+            with each of the re-sampled vec instances.
+    """
+
+    # Pre-generate the set of re-weighted vectors
+    vec_rws = [
+        vec
+        * np.array(
+            [
+                np.sum(np.random.randint(0, len(vec) + 1, len(vec)) == i)
+                for i in range(len(vec))
+            ]
+        )
+        for _ in range(num_resamples)
+    ]
+
+    vals = Parallel(n_jobs=num_jobs, backend=backend)(
+        delayed(fn)(vec_rw, *args) for vec_rw in vec_rws
+    )
+    return vals
