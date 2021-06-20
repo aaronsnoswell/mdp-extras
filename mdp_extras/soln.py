@@ -905,6 +905,28 @@ class UniformRandomPolicy(Policy):
         return np.log(np.ones(self.num_actions) / self.num_actions)
 
 
+class UniformRandomCtsPolicy(Policy):
+    """A Uniform Random policy for continuous action spaces"""
+
+    def __init__(self, action_range):
+        """C-tor"""
+        self.action_range = action_range
+        self.action_delta = self.action_range[1] - self.action_range[0]
+
+    def predict(self, s):
+        a = np.array([np.random.rand() * self.action_delta + self.action_range[0]])
+        return a, None
+
+    def log_prob_for_state(self, s):
+        raise ValueError("Not applicable for continuous action spaces")
+
+    def prob_for_state_action(self, s, a):
+        return np.exp(self.log_prob_for_state_action(s, a))
+
+    def log_prob_for_state_action(self, s, a):
+        return np.log(1.0 / self.action_delta)
+
+
 class EpsilonGreedyPolicy(Policy):
     """An Epsilon Greedy Policy wrt. a provided Q function"""
 
