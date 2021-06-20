@@ -451,3 +451,43 @@ def bootstrap_parallel(vec, fn, num_jobs, num_resamples=100, backend=None, *args
         delayed(fn)(vec_rw, *args) for vec_rw in vec_rws
     )
     return vals
+
+
+def all_paths_from_sa(xtr, s, a, max_length):
+    """Brute-force enumerate all paths starting from s, a up to some maximum length
+
+    Args:
+        xtr (DiscreteExplicitExtras): MDP definition
+        s (int): Starting state
+        a (int): Atarting action
+        max_length (int): Maximum length to list paths out to
+    """
+
+    states = np.arange(xtr.t_mat.shape[0])
+    actions = np.arange(xtr.t_mat.shape[1])
+
+    def extend(paths):
+        """Extend all paths in a given collection by one timestep"""
+        new_paths = []
+        for path in paths:
+            s1, a1 = path[-1]
+            if xtr.terminal_state_mask[s1]:
+                continue
+            succ_probs = xtr.t_mat[s1, a1, :]
+            succ_states = states[np.argwhere(succ_probs > 0)].flatten()
+            for s2 in succ_states:
+                if xtr.terminal_state_mask[s2]:
+                    new_paths.append(path + [(s2, None)])
+                else:
+                    for a2 in actions:
+                        new_paths.append(path + [(s2, a2)])
+        return new_paths
+
+    all_paths = []
+    current_head = [[(s, a)]]
+    for _ in range(max_length):
+        all_paths.extend(current_head)
+        current_head = extend(current_head)
+    all_paths.extend(current_head)
+
+    return all_paths
