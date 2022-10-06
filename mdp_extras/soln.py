@@ -1104,9 +1104,12 @@ class BoltzmannExplorationPolicy(Policy):
             )
             return np.ones(num_actions)
 
+        # We use log-sum-exp to avoid overflow with large Q values
         log_prob = self.scale * self.q[s]
-        total_log_prob = np.log(np.sum(np.exp(log_prob)))
+        c = np.max(log_prob)
+        total_log_prob = c + np.log(np.sum(np.exp(log_prob - c)))
         log_prob -= total_log_prob
+
         return log_prob
 
 
