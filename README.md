@@ -20,6 +20,12 @@ reward functions, discount factors, policy classes, etc.
 This utility library aims to provide a flexible way to specify MDP components such that
 they can be used in IRL applications.
 
+## Changelog
+
+### Version `0.0.3`
+
+Resolves a circular dependency issue that prevented the library from impoting correctly on Python 3.6 (and possibly Pyhton 3.7).
+
 ## Installation
 
 This package is not distributed on PyPI - you'll have to install from source.

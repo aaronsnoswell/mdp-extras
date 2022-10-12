@@ -5,8 +5,8 @@ from enum import Enum
 
 import numpy as np
 
-import mdp_extras.utils as u
-import mdp_extras.rewards as r
+import mdp_extras.utils
+import mdp_extras.rewards
 
 
 class FeatureFunction(abc.ABC):
@@ -217,7 +217,7 @@ class Indicator(FeatureFunction):
         except IndexError:
             warnings.warn(
                 f"Requested φ({o1}, {a}, {o2}), however slice is out-of-bounds. This could be due to using padded rollouts, in which case you can safely ignore this warning.",
-                u.PaddedMDPWarning,
+                mdp_extras.utils.PaddedMDPWarning,
             )
         return self._vec.flatten().copy()
 
@@ -281,7 +281,7 @@ class Disjoint(FeatureFunction):
         except IndexError:
             warnings.warn(
                 f"Requested φ({o1}, {a}, {o2}), however slice is out-of-bounds. This could be due to using padded rollouts, in which case you can safely ignore this warning.",
-                u.PaddedMDPWarning,
+                mdp_extras.utils.PaddedMDPWarning,
             )
         return self._vec.copy()
 
@@ -337,18 +337,18 @@ class MirrorWrap(FeatureFunction):
 
     def update_reward(self, reward):
         """Update a reward function object to match the new feature function"""
-        if not isinstance(reward, r.Linear):
+        if not isinstance(reward, mdp_extras.rewards.Linear):
             raise NotImplementedError
 
         assert len(reward.theta) == len(self.inner_class)
 
         new_theta = np.zeros(len(self))
         new_theta[: len(self.inner_class)] = reward.theta
-        return r.Linear(new_theta)
+        return mdp_extras.rewards.Linear(new_theta)
 
     def unupdate_reward(self, reward):
         """Un-Update a reward function object to match the original feature function"""
-        if not isinstance(reward, r.Linear):
+        if not isinstance(reward, mdp_extras.rewards.Linear):
             raise NotImplementedError
 
         assert len(reward.theta) == len(self)
@@ -363,4 +363,4 @@ class MirrorWrap(FeatureFunction):
 
         # The final 'zero' element does nothing
 
-        return r.Linear(new_theta)
+        return mdp_extras.rewards.Linear(new_theta)

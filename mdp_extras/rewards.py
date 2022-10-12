@@ -3,7 +3,7 @@ import abc
 import numpy as np
 import itertools as it
 
-import mdp_extras.features as f
+import mdp_extras.features
 
 
 class RewardFunction(abc.ABC):
@@ -68,7 +68,7 @@ class Linear(RewardFunction):
         """
 
         if xtr is None:
-            xtr = f.DiscreteExplicitExtras.fromdiscrete(env)
+            xtr = mdp_extras.features.DiscreteExplicitExtras.fromdiscrete(env)
 
         # Infer reward structure from transition tensor
         _rs = {s: set() for s in xtr.states}
@@ -148,14 +148,14 @@ class Linear(RewardFunction):
         rsas = np.zeros(
             (len(xtr.states), len(xtr.actions), len(xtr.states)), dtype=np.float
         )
-        if phi.type == f.Indicator.Type.OBSERVATION:
+        if phi.type == mdp_extras.features.Indicator.Type.OBSERVATION:
             for o1 in xtr.states:
                 rs[o1] = self(phi(o1))
-        elif phi.type == f.Indicator.Type.OBSERVATION_ACTION:
+        elif phi.type == mdp_extras.features.Indicator.Type.OBSERVATION_ACTION:
             for o1 in xtr.states:
                 for a in xtr.actions:
                     rsa[o1, a] = self(phi(o1, a))
-        elif phi.type == f.Indicator.Type.OBSERVATION_ACTION_OBSERVATION:
+        elif phi.type == mdp_extras.features.Indicator.Type.OBSERVATION_ACTION_OBSERVATION:
             for o1 in xtr.states:
                 for a in xtr.actions:
                     for o2 in xtr.states:
